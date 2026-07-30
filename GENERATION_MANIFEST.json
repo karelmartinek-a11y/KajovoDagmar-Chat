@@ -1,0 +1,38 @@
+{
+  "schema_version": "1.0.0",
+  "product": "KájovoDagmar",
+  "technical_id": "kajovodagmar",
+  "generated_at": "2026-07-28T00:00:00Z",
+  "source": {
+    "file": "KajovoDagmar_SSOT_v0021.docx",
+    "specification_version": "1.0",
+    "document_revision": "v0021",
+    "sha256": "d4feeb28d3a85dc663686592c07991f3b8f2fc49c2719dceacb241977900bff9",
+    "chapters": "0-20"
+  },
+  "target": {
+    "architecture": "modular_monolith",
+    "runtime": "Python 3.12",
+    "backend": "FastAPI",
+    "frontend": "React + TypeScript + Vite",
+    "database": "PostgreSQL + pgvector",
+    "edge": "Caddy"
+  },
+  "determinism": {
+    "timezone": "UTC",
+    "locale": "cs-CZ",
+    "lockfiles_required": true,
+    "image_digest_required_for_release": true
+  },
+  "generator": {
+    "name": "OpenAI GPT-5.6 Thinking / KájaPipeline",
+    "pipeline_revision": "2026-07-28"
+  },
+  "environment_observation": {
+    "python_available": "3.13.5",
+    "node_available": "22.16.0",
+    "docker_available": false,
+    "postgres_available": false,
+    "network_available": false
+  }
+}

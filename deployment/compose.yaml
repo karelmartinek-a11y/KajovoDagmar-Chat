@@ -1,0 +1,202 @@
+name: kajovodagmar
+services:
+  caddy:
+    image: caddy:2.10.0-alpine
+    restart: unless-stopped
+    ports:
+      - "${HTTP_PORT:-18080}:80"
+      - "${HTTPS_PORT:-18443}:443"
+    environment:
+      PUBLIC_DOMAIN: ${PUBLIC_DOMAIN:-chat.hcasc.cz}
+      ACME_EMAIL: ${ACME_EMAIL:?ACME_EMAIL is required}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks: [edge, app]
+    depends_on:
+      web:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits: {cpus: "0.50", memory: 256M}
+        reservations: {memory: 64M}
+
+  web:
+    image: ${APP_IMAGE:?APP_IMAGE with immutable digest is required}
+    restart: unless-stopped
+    command: ["uvicorn","kajovodagmar.main:app","--host","0.0.0.0","--port","8000","--proxy-headers","--forwarded-allow-ips=*"]
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      KAJOVODAGMAR_DATABASE_URL: postgresql+asyncpg://kajovodagmar:${POSTGRES_PASSWORD}@db:5432/kajovodagmar
+      KAJOVODAGMAR_ENVIRONMENT: ${KAJOVODAGMAR_ENVIRONMENT:-production}
+      KAJOVODAGMAR_PUBLIC_ORIGIN: ${KAJOVODAGMAR_PUBLIC_ORIGIN:?KAJOVODAGMAR_PUBLIC_ORIGIN is required}
+      KAJOVODAGMAR_ROOT_ENCRYPTION_KEY: ${KAJOVODAGMAR_ROOT_ENCRYPTION_KEY:?KAJOVODAGMAR_ROOT_ENCRYPTION_KEY is required}
+      KAJOVODAGMAR_INITIALIZATION_SECRET_HASH: ${KAJOVODAGMAR_INITIALIZATION_SECRET_HASH:?KAJOVODAGMAR_INITIALIZATION_SECRET_HASH is required}
+    volumes:
+      - app_runtime:/opt/kajovodagmar/runtime
+    networks: [app]
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD","python","-c","import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/v1/health/ready', timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 8
+      start_period: 30s
+    read_only: true
+    tmpfs: [/tmp]
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: [ALL]
+    deploy:
+      replicas: 1
+      resources:
+        limits: {cpus: "1.50", memory: 1G}
+        reservations: {memory: 256M}
+
+  worker:
+    image: ${APP_IMAGE:?APP_IMAGE with immutable digest is required}
+    restart: unless-stopped
+    command: ["python","-m","kajovodagmar.worker"]
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      KAJOVODAGMAR_DATABASE_URL: postgresql+asyncpg://kajovodagmar:${POSTGRES_PASSWORD}@db:5432/kajovodagmar
+      KAJOVODAGMAR_ENVIRONMENT: ${KAJOVODAGMAR_ENVIRONMENT:-production}
+      KAJOVODAGMAR_PUBLIC_ORIGIN: ${KAJOVODAGMAR_PUBLIC_ORIGIN:?KAJOVODAGMAR_PUBLIC_ORIGIN is required}
+      KAJOVODAGMAR_ROOT_ENCRYPTION_KEY: ${KAJOVODAGMAR_ROOT_ENCRYPTION_KEY:?KAJOVODAGMAR_ROOT_ENCRYPTION_KEY is required}
+      KAJOVODAGMAR_INITIALIZATION_SECRET_HASH: ${KAJOVODAGMAR_INITIALIZATION_SECRET_HASH:?KAJOVODAGMAR_INITIALIZATION_SECRET_HASH is required}
+    volumes:
+      - app_runtime:/opt/kajovodagmar/runtime
+    networks: [app]
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      disable: true
+    read_only: true
+    tmpfs: [/tmp]
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: [ALL]
+    deploy:
+      replicas: 1
+      resources:
+        limits: {cpus: "1.50", memory: 1G}
+        reservations: {memory: 256M}
+
+  db:
+    image: kajovodagmar-postgres:17-pgbackrest-2.59.0
+    build:
+      context: ..
+      dockerfile: deployment/Dockerfile.postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: kajovodagmar
+      POSTGRES_USER: kajovodagmar
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      PGBACKREST_REPO1_CIPHER_PASS: ${PGBACKREST_REPO1_CIPHER_PASS:?PGBACKREST_REPO1_CIPHER_PASS is required}
+      POSTGRES_INITDB_ARGS: --data-checksums
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - postgres_archive:/var/lib/postgresql/archive
+      - postgres_socket:/var/run/postgresql
+      - backup_repository:/var/lib/pgbackrest
+      - ./postgresql.conf:/etc/postgresql/postgresql.conf:ro
+      - ./pgbackrest/pgbackrest.conf:/etc/pgbackrest/pgbackrest.conf:ro
+    entrypoint:
+      - sh
+      - -ec
+      - |
+        chown -R postgres:postgres /var/lib/postgresql/archive
+        chown -R postgres:postgres /var/lib/pgbackrest
+        exec docker-entrypoint.sh postgres -c config_file=/etc/postgresql/postgresql.conf
+    networks: [app, backup]
+    healthcheck:
+      test: ["CMD-SHELL","pg_isready -U kajovodagmar -d kajovodagmar"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    security_opt: ["no-new-privileges:true"]
+    deploy:
+      resources:
+        limits: {cpus: "2.00", memory: 2G}
+        reservations: {memory: 512M}
+
+  pgbackrest:
+    image: woblerr/pgbackrest:2.59.0@sha256:7a7a7adf33b3d0d2049f3b457563fa60ee59ab9a0b11c7750bf81a38c83f57ff
+    restart: unless-stopped
+    user: "0:0"
+    environment:
+      PGBACKREST_STANZA: kajovodagmar
+      PGBACKREST_REPO1_CIPHER_PASS: ${PGBACKREST_REPO1_CIPHER_PASS:?PGBACKREST_REPO1_CIPHER_PASS is required}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data:ro
+      - postgres_archive:/var/lib/postgresql/archive
+      - postgres_socket:/var/run/postgresql
+      - backup_repository:/var/lib/pgbackrest
+      - ./pgbackrest/pgbackrest.conf:/etc/pgbackrest/pgbackrest.conf:ro
+    networks: [backup]
+    entrypoint: ["sh","-c","trap exit TERM; while :; do sleep 3600 & wait $${!}; done"]
+    security_opt: ["no-new-privileges:true"]
+    deploy:
+      resources:
+        limits: {cpus: "0.50", memory: 512M}
+        reservations: {memory: 128M}
+
+  backup-agent:
+    image: kajovodagmar-postgres:17-pgbackrest-2.59.0
+    build:
+      context: ..
+      dockerfile: deployment/Dockerfile.postgres
+    restart: unless-stopped
+    user: root
+    entrypoint:
+      - sh
+      - -ec
+      - |
+        chown postgres:postgres /var/lib/postgresql/restore-test
+        exec gosu postgres python3 /usr/local/lib/kajovodagmar/backup_agent.py
+    environment:
+      BACKUP_AGENT_DATABASE_DSN: postgresql://kajovodagmar:${POSTGRES_PASSWORD}@db:5432/kajovodagmar
+      PGBACKREST_STANZA: kajovodagmar
+      PGBACKREST_REPO1_CIPHER_PASS: ${PGBACKREST_REPO1_CIPHER_PASS:?PGBACKREST_REPO1_CIPHER_PASS is required}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data:ro
+      - postgres_archive:/var/lib/postgresql/archive
+      - postgres_socket:/var/run/postgresql
+      - backup_repository:/var/lib/pgbackrest
+      - restore_test_data:/var/lib/postgresql/restore-test
+      - ./pgbackrest/pgbackrest.conf:/etc/pgbackrest/pgbackrest.conf:ro
+    networks: [app, backup]
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      disable: true
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: [ALL]
+    cap_add: [CHOWN, SETGID, SETUID]
+    deploy:
+      resources:
+        limits: {cpus: "1.00", memory: 1G}
+        reservations: {memory: 128M}
+
+networks:
+  edge: {}
+  app:
+    internal: true
+  backup:
+    internal: true
+volumes:
+  caddy_data: {}
+  caddy_config: {}
+  app_runtime: {}
+  postgres_data: {}
+  postgres_archive: {}
+  postgres_socket: {}
+  backup_repository: {}
+  restore_test_data: {}

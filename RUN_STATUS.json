@@ -1,0 +1,63 @@
+{
+  "schema_version": "1.0",
+  "product": "KájovoDagmar",
+  "status": "PASS",
+  "generated_at": "2026-07-30T00:30:00Z",
+  "ssot": {
+    "revision": "v0021",
+    "chapters": "0-20",
+    "sha256": "d4feeb28d3a85dc663686592c07991f3b8f2fc49c2719dceacb241977900bff9"
+  },
+  "pipeline": {
+    "intake": "PASS",
+    "design": "PASS",
+    "implementation": "PASS",
+    "audit": "PASS",
+    "traceability_verified": 1000
+  },
+  "verification": {
+    "python_tests": {
+      "backend_coverage_suite_passed": 117,
+      "integration_passed": 7
+    },
+    "frontend_tests": {
+      "vitest_passed": 41,
+      "playwright_passed": 10
+    },
+    "backend_coverage": {
+      "statement_rate": 0.9191,
+      "branch_rate": 0.8558,
+      "required_statement_rate": 0.9,
+      "required_branch_rate": 0.85,
+      "pass": true
+    },
+    "frontend_coverage": {
+      "statement_rate": 0.9146,
+      "branch_rate": 0.8011,
+      "function_rate": 0.8806,
+      "line_rate": 0.9277,
+      "pass": true
+    },
+    "forbidden_placeholder_scan": "PASS",
+    "contract_freshness": "PASS",
+    "frontend_build": "PASS",
+    "docker_images": "PASS",
+    "compose_runtime": "PASS",
+    "backup_restore": "PASS",
+    "sbom": "PASS",
+    "vulnerability_gate": "PASS",
+    "traceability": "PASS",
+    "release_check": "PASS"
+  },
+  "release_check": {
+    "command": "make release-check",
+    "exit_code": 0,
+    "successful": true
+  },
+  "lockfiles": {
+    "backend_uv_lock": true,
+    "web_package_lock": true
+  },
+  "production_deployed": false,
+  "blocker_count": 0
+}

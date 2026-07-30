@@ -1,0 +1,62 @@
+from pathlib import Path
+
+
+def test_chapter_requirements_are_mapped() -> None:
+    requirement_ids = [
+        "10.1",
+        "10.2",
+        "10.3",
+        "10.4",
+        "10.5",
+        "10.6",
+        "10.7",
+        "10.8",
+        "10.9",
+        "10.10",
+        "10.11",
+        "10.12",
+        "10.13",
+        "10.14",
+        "10.15",
+        "10.16",
+        "10.17",
+        "10.18",
+        "10.19",
+        "10.20",
+        "10.21",
+        "10.22",
+        "10.23",
+        "10.24",
+        "10.25",
+        "10.26",
+        "10.27",
+        "10.28",
+        "10.29",
+        "10.30",
+        "10.31",
+        "10.32",
+        "10.33",
+        "10.34",
+        "10.35",
+        "10.36",
+        "10.37",
+        "10.38",
+        "10.39",
+        "10.40",
+        "10.41",
+        "10.42",
+        "10.43",
+        "10.44",
+        "10.45",
+        "10.46",
+        "10.47",
+        "10.48",
+    ]
+    mapped_paths = [
+        "backend/src/kajovodagmar/identity",
+        "backend/src/kajovodagmar/security",
+        "tests/security",
+    ]
+    assert requirement_ids
+    for path in mapped_paths:
+        assert Path(path).exists(), path

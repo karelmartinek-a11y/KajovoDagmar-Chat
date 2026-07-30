@@ -1,0 +1,26 @@
+{
+  "schema_version": "1.0",
+  "window_days": 30,
+  "services": [
+    {
+      "id": "http-availability",
+      "objective": 0.995,
+      "indicator": "successful HTTP responses / all HTTP responses",
+      "promql_error_ratio": "sum(rate(kajovodagmar_http_requests_total{status_class=~\"5..\"}[5m])) / clamp_min(sum(rate(kajovodagmar_http_requests_total[5m])), 1)"
+    },
+    {
+      "id": "http-latency",
+      "objective": 0.95,
+      "threshold_seconds": 1.0,
+      "indicator": "share of HTTP requests completed within one second",
+      "promql_success_ratio": "sum(rate(kajovodagmar_http_request_duration_seconds_bucket{le=\"1.0\"}[5m])) / clamp_min(sum(rate(kajovodagmar_http_request_duration_seconds_count[5m])), 1)"
+    },
+    {
+      "id": "voice-first-response",
+      "objective": 0.95,
+      "threshold_seconds": 2.5,
+      "indicator": "share of synthesized responses with first audio within 2.5 seconds",
+      "promql_success_ratio": "sum(rate(kajovodagmar_speech_first_audio_seconds_bucket{le=\"2.5\",result=\"success\"}[15m])) / clamp_min(sum(rate(kajovodagmar_speech_first_audio_seconds_count[15m])), 1)"
+    }
+  ]
+}

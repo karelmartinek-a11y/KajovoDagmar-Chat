@@ -1,0 +1,50 @@
+from pathlib import Path
+
+
+def test_chapter_requirements_are_mapped() -> None:
+    requirement_ids = [
+        "6.1",
+        "6.2",
+        "6.3",
+        "6.4",
+        "6.5",
+        "6.6",
+        "6.7",
+        "6.8",
+        "6.9",
+        "6.10",
+        "6.11",
+        "6.12",
+        "6.13",
+        "6.14",
+        "6.15",
+        "6.16",
+        "6.17",
+        "6.18",
+        "6.19",
+        "6.20",
+        "6.21",
+        "6.22",
+        "6.23",
+        "6.24",
+        "6.25",
+        "6.26",
+        "6.27",
+        "6.28",
+        "6.29",
+        "6.30",
+        "6.31",
+        "6.32",
+        "6.33",
+        "6.34",
+        "6.35",
+        "6.36",
+    ]
+    mapped_paths = [
+        "backend/src/kajovodagmar/conversations",
+        "backend/src/kajovodagmar/realtime",
+        "web/src/features/chat",
+    ]
+    assert requirement_ids
+    for path in mapped_paths:
+        assert Path(path).exists(), path

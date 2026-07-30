@@ -1,0 +1,8 @@
+coverage/
+dist/
+node_modules/
+test-results/
+src/api/generated/contracts.ts
+*.tsbuildinfo
+vite.config.js
+vite.config.d.ts

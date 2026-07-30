@@ -1,0 +1,97 @@
+[build-system]
+requires = ["hatchling==1.27.0"]
+build-backend = "hatchling.build"
+
+[project]
+name = "kajovodagmar"
+version = "1.0.0"
+description = "KájovoDagmar – osobní hlasová virtuální asistentka"
+requires-python = ">=3.12,<3.13"
+license = {text = "Proprietary - internal use"}
+dependencies = [
+  "fastapi==0.141.1",
+  "starlette==1.3.1",
+  "uvicorn[standard]==0.48.0",
+  "pydantic==2.13.4",
+  "pydantic-settings==2.14.2",
+  "sqlalchemy[asyncio]==2.0.50",
+  "asyncpg==0.31.0",
+  "alembic==1.18.4",
+  "argon2-cffi==25.1.0",
+  "cryptography==49.0.0",
+  "httpx==0.28.1",
+  "email-validator==2.3.0",
+  "python-multipart==0.0.32",
+  "prometheus-client==0.25.0",
+  "opentelemetry-api==1.42.1",
+  "opentelemetry-sdk==1.42.1",
+  "opentelemetry-exporter-otlp-proto-http==1.42.1",
+  "structlog==25.5.0",
+  "typer==0.21.0",
+  "orjson==3.11.7",
+  "jsonschema==4.26.0"
+]
+
+[project.optional-dependencies]
+test = [
+  "pytest==9.1.1",
+  "pytest-asyncio==1.3.0",
+  "pytest-cov==7.0.0",
+  "pytest-timeout==2.4.0",
+  "hypothesis==6.148.11",
+  "ruff==0.14.13",
+  "mypy==1.19.1",
+  "bandit==1.9.3",
+  "pip-audit==2.10.0",
+  "psycopg==3.3.4"
+]
+
+[project.scripts]
+kajovodagmar = "kajovodagmar.cli:app"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/kajovodagmar"]
+
+[tool.pytest.ini_options]
+pythonpath = ["backend/src"]
+testpaths = ["tests"]
+addopts = "-ra --strict-config --strict-markers"
+asyncio_mode = "auto"
+markers = [
+  "integration: PostgreSQL-backed tests",
+  "e2e: browser tests",
+  "security: security controls",
+  "performance: performance budgets",
+  "ai_eval: deterministic AI evaluation"
+]
+
+[tool.coverage.run]
+branch = true
+source = ["backend/src/kajovodagmar"]
+
+[tool.coverage.report]
+fail_under = 90
+show_missing = true
+skip_covered = false
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+src = ["src", "../tests", "../scripts"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "S", "ASYNC", "RUF"]
+# FastAPI dependency markers are intentionally evaluated in parameter defaults.
+# Czech user-facing copy also uses the typographically correct en dash.
+ignore = ["S101", "B008", "RUF001"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+mypy_path = "src"
+plugins = ["pydantic.mypy"]
+warn_unreachable = true
+
+[tool.bandit]
+exclude_dirs = ["tests"]
+skips = ["B101"]

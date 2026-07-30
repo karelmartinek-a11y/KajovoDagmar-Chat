@@ -1,0 +1,63 @@
+groups:
+  - name: kajovodagmar-slo
+    interval: 30s
+    rules:
+      - alert: KajovoDagmarHttpAvailabilityFastBurn
+        expr: |
+          (
+            sum(rate(kajovodagmar_http_requests_total{status_class=~"5.."}[5m]))
+            /
+            clamp_min(sum(rate(kajovodagmar_http_requests_total[5m])), 1)
+          ) > (14.4 * 0.005)
+        for: 10m
+        labels:
+          severity: critical
+          service: kajovodagmar
+          slo: http-availability
+        annotations:
+          summary: "HTTP chybovost rychle vyčerpává 30denní error budget."
+          runbook: "docs/runbooks/incident.md#http-availability"
+      - alert: KajovoDagmarHttpLatencyBudgetBurn
+        expr: |
+          (
+            1 -
+            sum(rate(kajovodagmar_http_request_duration_seconds_bucket{le="1.0"}[30m]))
+            /
+            clamp_min(sum(rate(kajovodagmar_http_request_duration_seconds_count[30m])), 1)
+          ) > 0.05
+        for: 30m
+        labels:
+          severity: warning
+          service: kajovodagmar
+          slo: http-latency
+        annotations:
+          summary: "Více než 5 % HTTP požadavků překračuje jednu sekundu."
+          runbook: "docs/runbooks/capacity.md"
+      - alert: KajovoDagmarRealtimeFailureBurst
+        expr: |
+          sum(rate(kajovodagmar_realtime_events_total{result=~"failed|rejected|unavailable"}[10m])) > 0.1
+        for: 10m
+        labels:
+          severity: warning
+          service: kajovodagmar
+        annotations:
+          summary: "Realtime hlasová pipeline vykazuje souvislou sérii selhání."
+          runbook: "docs/runbooks/incident.md#realtime"
+      - alert: KajovoDagmarBackgroundJobFailures
+        expr: sum(increase(kajovodagmar_jobs_total{result="failed"}[15m])) > 3
+        for: 5m
+        labels:
+          severity: warning
+          service: kajovodagmar
+        annotations:
+          summary: "Worker opakovaně ukončuje úlohy chybou."
+          runbook: "docs/runbooks/incident.md#worker"
+      - alert: KajovoDagmarBackupOperationFailed
+        expr: sum(increase(kajovodagmar_backups_total{result="failed"}[1h])) > 0
+        for: 1m
+        labels:
+          severity: critical
+          service: kajovodagmar
+        annotations:
+          summary: "Vytvoření, ověření nebo restore test zálohy selhal."
+          runbook: "docs/runbooks/backup.md"

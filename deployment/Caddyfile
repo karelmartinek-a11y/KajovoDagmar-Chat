@@ -1,0 +1,31 @@
+{
+  email {$ACME_EMAIL}
+  admin off
+  servers {
+    protocols h1 h2 h3
+  }
+}
+
+{$PUBLIC_DOMAIN} {
+  encode zstd gzip
+  header {
+    Strict-Transport-Security "max-age=63072000; includeSubDomains; preload"
+    X-Content-Type-Options "nosniff"
+    X-Frame-Options "DENY"
+    Referrer-Policy "no-referrer"
+    -Server
+  }
+  @websocket path /api/v1/realtime
+  reverse_proxy @websocket web:8000
+  reverse_proxy web:8000 {
+    health_uri /api/v1/health/live
+    transport http {
+      dial_timeout 5s
+      response_header_timeout 60s
+    }
+  }
+  log {
+    output stdout
+    format json
+  }
+}

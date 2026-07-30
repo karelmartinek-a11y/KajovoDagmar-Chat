@@ -1,0 +1,7 @@
+FROM pgvector/pgvector:pg17@sha256:7ae6051efd0e60444282c27c7e141af07f322ce033300e727a49c3dd11075e38
+
+RUN apt-get update \
+    && apt-get install --no-install-recommends -y pgbackrest=2.59.0-1.pgdg12+1 python3-psycopg \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY deployment/backup_agent.py /usr/local/lib/kajovodagmar/backup_agent.py

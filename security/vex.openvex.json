@@ -1,0 +1,165 @@
+{
+  "@context": "https://openvex.dev/ns/v0.2.0",
+  "@id": "https://kajovodagmar.invalid/security/vex/2026-07-30",
+  "author": "KájovoDagmar security review",
+  "timestamp": "2026-07-30T00:00:00+02:00",
+  "version": 1,
+  "statements": [
+    {
+      "vulnerability": {
+        "@id": "CVE-2026-11822"
+      },
+      "products": [
+        {
+          "@id": "kajovodagmar:release-candidate"
+        }
+      ],
+      "status": "not_affected",
+      "justification": "vulnerable_code_not_in_execute_path",
+      "impact_statement": "The application uses PostgreSQL exclusively, exposes no SQLite database ingestion, and never executes SQLite FTS5 MATCH queries."
+    },
+    {
+      "vulnerability": {
+        "@id": "CVE-2026-11824"
+      },
+      "products": [
+        {
+          "@id": "kajovodagmar:release-candidate"
+        }
+      ],
+      "status": "not_affected",
+      "justification": "vulnerable_code_not_in_execute_path",
+      "impact_statement": "The application uses PostgreSQL exclusively, exposes no SQLite database ingestion, and never executes SQLite FTS5 MATCH queries."
+    },
+    {
+      "vulnerability": {
+        "@id": "CVE-2026-11940"
+      },
+      "products": [
+        {
+          "@id": "kajovodagmar:release-candidate"
+        }
+      ],
+      "status": "not_affected",
+      "justification": "vulnerable_code_not_in_execute_path",
+      "impact_statement": "No application endpoint accepts or extracts tar archives and the production code does not import or invoke tarfile."
+    },
+    {
+      "vulnerability": {
+        "@id": "CVE-2026-11972"
+      },
+      "products": [
+        {
+          "@id": "kajovodagmar:release-candidate"
+        }
+      ],
+      "status": "not_affected",
+      "justification": "vulnerable_code_not_in_execute_path",
+      "impact_statement": "No application endpoint accepts or extracts tar archives and the production code does not use tarfile streaming mode."
+    },
+    {
+      "vulnerability": {
+        "@id": "CVE-2026-15308"
+      },
+      "products": [
+        {
+          "@id": "kajovodagmar:release-candidate"
+        }
+      ],
+      "status": "not_affected",
+      "justification": "vulnerable_code_not_in_execute_path",
+      "impact_statement": "The production application does not parse user-controlled HTML with html.parser.HTMLParser."
+    },
+    {
+      "vulnerability": {
+        "@id": "CVE-2026-3298"
+      },
+      "products": [
+        {
+          "@id": "kajovodagmar:release-candidate"
+        }
+      ],
+      "status": "not_affected",
+      "justification": "vulnerable_code_not_present",
+      "impact_statement": "The image is Linux/Alpine; the vulnerable Windows-only ProactorEventLoop implementation is not present."
+    },
+    {
+      "vulnerability": {
+        "@id": "CVE-2026-3644"
+      },
+      "products": [
+        {
+          "@id": "kajovodagmar:release-candidate"
+        }
+      ],
+      "status": "not_affected",
+      "justification": "vulnerable_code_not_in_execute_path",
+      "impact_statement": "Application cookies are emitted by Starlette response primitives; production code does not use Morsel.update, unpickling, js_output, or the affected output path."
+    },
+    {
+      "vulnerability": {
+        "@id": "CVE-2026-4224"
+      },
+      "products": [
+        {
+          "@id": "kajovodagmar:release-candidate"
+        }
+      ],
+      "status": "not_affected",
+      "justification": "vulnerable_code_not_in_execute_path",
+      "impact_statement": "The application exposes no XML parsing interface and does not register Expat ElementDeclHandler callbacks."
+    },
+    {
+      "vulnerability": {
+        "@id": "CVE-2026-4786"
+      },
+      "products": [
+        {
+          "@id": "kajovodagmar:release-candidate"
+        }
+      ],
+      "status": "not_affected",
+      "justification": "vulnerable_code_not_in_execute_path",
+      "impact_statement": "The headless server application never imports or invokes webbrowser.open and cannot pass attacker-controlled URLs to a local browser shell."
+    },
+    {
+      "vulnerability": {
+        "@id": "CVE-2026-6100"
+      },
+      "products": [
+        {
+          "@id": "kajovodagmar:release-candidate"
+        }
+      ],
+      "status": "not_affected",
+      "justification": "vulnerable_code_not_in_execute_path",
+      "impact_statement": "Production code does not instantiate or reuse LZMA, BZ2, or Gzip decompressors after MemoryError."
+    },
+    {
+      "vulnerability": {
+        "@id": "CVE-2026-7210"
+      },
+      "products": [
+        {
+          "@id": "kajovodagmar:release-candidate"
+        }
+      ],
+      "status": "not_affected",
+      "justification": "vulnerable_code_not_in_execute_path",
+      "impact_statement": "The application exposes no XML parsing interface and never parses attacker-controlled XML with Expat or ElementTree."
+    },
+    {
+      "vulnerability": {
+        "@id": "CVE-2026-9669"
+      },
+      "products": [
+        {
+          "@id": "kajovodagmar:release-candidate"
+        }
+      ],
+      "status": "not_affected",
+      "justification": "vulnerable_code_not_in_execute_path",
+      "impact_statement": "Production code does not instantiate or reuse BZ2Decompressor after a decompression error."
+    }
+  ]
+}

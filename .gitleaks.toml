@@ -1,0 +1,19 @@
+title = "KájovoDagmar secret scanning policy"
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Explicit public synthetic test constants"
+regexTarget = "secret"
+regexes = [
+  '''^0123456789abcdef$''',
+  '''^synthetic-e2e-initialization-secret$''',
+  '''^operations-verify-wrong-0001$''',
+  '''^operations-verify-0001$''',
+  '''^AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8$'''
+]
+
+[[allowlists]]
+description = "Generated scanner and release evidence; never committed"
+paths = ['''^release/evidence/generated/''']

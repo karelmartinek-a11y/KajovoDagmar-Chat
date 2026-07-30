@@ -1,0 +1,55 @@
+{
+  "reviewed_at": "2026-07-30",
+  "expires_at": "2026-08-29",
+  "image": "kajovodagmar:release-candidate",
+  "findings": {
+    "CVE-2026-11822": {
+      "package": "sqlite-libs",
+      "version": "3.51.2-r0"
+    },
+    "CVE-2026-11824": {
+      "package": "sqlite-libs",
+      "version": "3.51.2-r0"
+    },
+    "CVE-2026-11940": {
+      "package": "python",
+      "version": "3.12.13"
+    },
+    "CVE-2026-11972": {
+      "package": "python",
+      "version": "3.12.13"
+    },
+    "CVE-2026-15308": {
+      "package": "python",
+      "version": "3.12.13"
+    },
+    "CVE-2026-3298": {
+      "package": "python",
+      "version": "3.12.13"
+    },
+    "CVE-2026-3644": {
+      "package": "python",
+      "version": "3.12.13"
+    },
+    "CVE-2026-4224": {
+      "package": "python",
+      "version": "3.12.13"
+    },
+    "CVE-2026-4786": {
+      "package": "python",
+      "version": "3.12.13"
+    },
+    "CVE-2026-6100": {
+      "package": "python",
+      "version": "3.12.13"
+    },
+    "CVE-2026-7210": {
+      "package": "python",
+      "version": "3.12.13"
+    },
+    "CVE-2026-9669": {
+      "package": "python",
+      "version": "3.12.13"
+    }
+  }
+}

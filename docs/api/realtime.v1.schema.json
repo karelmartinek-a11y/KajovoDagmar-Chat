@@ -1,0 +1,141 @@
+{
+  "$defs": {
+    "ClientEnvelope": {
+      "properties": {
+        "conversation_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Conversation Id"
+        },
+        "event_id": {
+          "format": "uuid",
+          "title": "Event Id",
+          "type": "string"
+        },
+        "payload": {
+          "additionalProperties": true,
+          "title": "Payload",
+          "type": "object"
+        },
+        "resume_cursor": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Resume Cursor"
+        },
+        "sequence": {
+          "minimum": 1,
+          "title": "Sequence",
+          "type": "integer"
+        },
+        "type": {
+          "enum": [
+            "session.start",
+            "session.resume",
+            "microphone.pause",
+            "microphone.resume",
+            "turn.audio_end",
+            "turn.text",
+            "assistant.interrupt",
+            "session.end",
+            "ack",
+            "ping"
+          ],
+          "title": "Type",
+          "type": "string"
+        },
+        "version": {
+          "const": "1.0",
+          "title": "Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "version",
+        "event_id",
+        "sequence",
+        "type"
+      ],
+      "title": "ClientEnvelope",
+      "type": "object"
+    },
+    "ServerEnvelope": {
+      "properties": {
+        "ack_for": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Ack For"
+        },
+        "conversation_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Conversation Id"
+        },
+        "event_id": {
+          "format": "uuid",
+          "title": "Event Id",
+          "type": "string"
+        },
+        "payload": {
+          "additionalProperties": true,
+          "title": "Payload",
+          "type": "object"
+        },
+        "sequence": {
+          "title": "Sequence",
+          "type": "integer"
+        },
+        "type": {
+          "title": "Type",
+          "type": "string"
+        },
+        "version": {
+          "const": "1.0",
+          "default": "1.0",
+          "title": "Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "event_id",
+        "sequence",
+        "type"
+      ],
+      "title": "ServerEnvelope",
+      "type": "object"
+    }
+  },
+  "$id": "https://chat.hcasc.cz/schemas/realtime-v1.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "protocol_version": "1.0"
+}

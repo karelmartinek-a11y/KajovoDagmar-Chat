@@ -1,0 +1,10 @@
+{
+  "notice": "Syntetická data výhradně pro testy; nejsou určena pro produkční bootstrap.",
+  "conversation": {
+    "language": "cs",
+    "messages": [
+      {"role": "user", "content": "Zapamatuj si syntetickou preferenci pro test."},
+      {"role": "assistant", "content": "Mám uložit přesně tuto syntetickou preferenci?"}
+    ]
+  }
+}
