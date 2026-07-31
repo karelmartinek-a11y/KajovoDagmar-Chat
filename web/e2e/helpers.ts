@@ -30,7 +30,8 @@ export async function ensureAuthenticated(page: Page): Promise<void> {
     await page.getByLabel('Potvrzení hesla').fill(password);
     const initializeResponse = page.waitForResponse(
       (response) =>
-        response.request().method() === 'POST' && response.url().includes('/api/v1/auth/initialize'),
+        response.request().method() === 'POST' &&
+        response.url().includes('/api/v1/auth/initialize'),
     );
     await page.getByRole('button', { name: 'Aktivovat účet' }).click();
     if ((await initializeResponse).status() !== 201) {
