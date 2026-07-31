@@ -77,3 +77,29 @@ Inicializační tajemství je uloženo mimo checkout. Oprávněný administráto
 ```bash
 sudo cat /srv/hcasc/kajovodagmar-chat/shared/secrets/initialization-secret
 ```
+
+## Ověření aktivního release
+
+Po každém automatickém nasazení operátor porovná všechny tři nezávislé
+identifikátory. GitHub `headSha`, obsah
+`shared/data/active-release-sha` a cíl symlinku `current` musí být shodné:
+
+```bash
+sudo cat /srv/hcasc/kajovodagmar-chat/shared/data/active-release-sha
+sudo readlink -f /srv/hcasc/kajovodagmar-chat/current
+sudo docker ps \
+  --filter label=cz.hcasc.application=kajovodagmar-chat \
+  --format '{{.Names}} {{.Status}} {{.Ports}}'
+```
+
+Veřejná a izolační kontrola nesmí používat inicializační tajemství:
+
+```bash
+curl -fsS https://chat.hcasc.cz/api/v1/health/ready
+curl -fsS https://dagmar.hcasc.cz/ >/dev/null
+sudo ss -lnt | grep '127.0.0.1:18180'
+```
+
+Ready odpověď může před prvním přihlášením oprávněného administrátora uvádět
+stav `uninitialized`. PostgreSQL nesmí být mezi hostitelskými listening porty
+a všechny kontejnery projektu musí mít nulový počet restartů.
