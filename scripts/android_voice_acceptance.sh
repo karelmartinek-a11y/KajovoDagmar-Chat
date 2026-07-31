@@ -13,6 +13,20 @@ if [[ -z "$device" ]]; then
 fi
 
 adb -s "$device" reverse tcp:18443 tcp:18443
+android_services_ready=false
+for _ in $(seq 1 60); do
+  if adb -s "$device" shell pm list packages 2>/dev/null | grep -q '^package:android$' \
+    && adb -s "$device" shell am get-current-user 2>/dev/null | grep -q '^[0-9][0-9]*$'; then
+    android_services_ready=true
+    break
+  fi
+  sleep 2
+done
+if [[ "$android_services_ready" != true ]]; then
+  echo "Android package/activity services did not become ready." >&2
+  adb -s "$device" shell getprop 2>&1 || true
+  exit 1
+fi
 browser_package=""
 for candidate in com.android.chrome com.google.android.apps.chrome org.chromium.chrome com.android.browser; do
   if adb -s "$device" shell pm path "$candidate" 2>/dev/null | grep -q '^package:'; then
