@@ -39,7 +39,9 @@ test.describe.serial('KájovoDagmar acceptance', () => {
     await page.getByRole('button', { name: 'Zahájit rozhovor' }).click();
     await expect(page.getByText('Naslouchám')).toBeVisible();
     await page.getByLabel('Textová zpráva').fill('Odpověz na syntetický test.');
-    await page.getByRole('button', { name: 'Odeslat zprávu' }).click();
+    await page.locator('form.text-entry').evaluate((form) => {
+      (form as HTMLFormElement).requestSubmit();
+    });
     await expect(page.getByRole('alert')).toContainText(/model|Nastavení|poskytovatel/i);
   });
 

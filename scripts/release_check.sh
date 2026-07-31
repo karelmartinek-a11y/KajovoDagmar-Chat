@@ -59,6 +59,19 @@ run compose_database docker compose -f deployment/compose.yaml up -d --wait db p
 run backup_stanza docker compose -f deployment/compose.yaml exec -T --user postgres db pgbackrest --stanza=kajovodagmar stanza-create
 run migrations docker compose -f deployment/compose.yaml run --rm web alembic upgrade head
 run compose_up docker compose -f deployment/compose.yaml up -d --wait
+run compose_frontend_readiness bash -c '
+  for attempt in $(seq 1 30); do
+    if curl --fail --silent --show-error --insecure --connect-timeout 2 "https://localhost:${HTTPS_PORT}/" \
+      | grep -q "<div id=\"root\"></div>"; then
+      exit 0
+    fi
+    sleep 1
+  done
+  echo "Testovací frontend endpoint nebyl připraven: https://localhost:${HTTPS_PORT}/" >&2
+  docker compose -f deployment/compose.yaml ps -a >&2 || true
+  docker compose -f deployment/compose.yaml logs --no-color --tail=120 caddy web >&2 || true
+  exit 1
+'
 run instance_bootstrap docker compose -f deployment/compose.yaml exec -T web kajovodagmar bootstrap-instance
 run e2e make test-e2e
 run accessibility make test-accessibility
