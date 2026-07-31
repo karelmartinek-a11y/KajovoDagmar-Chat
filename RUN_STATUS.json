@@ -1,8 +1,8 @@
 {
   "schema_version": "1.0",
   "product": "KájovoDagmar",
-  "status": "BLOCKER",
-  "generated_at": "2026-07-31T04:56:09Z",
+  "status": "PASS",
+  "generated_at": "2026-07-31T05:53:30Z",
   "ssot": {
     "revision": "v0021",
     "chapters": "0-20",
@@ -14,7 +14,7 @@
     "implementation": "PASS",
     "audit": "PASS",
     "github_ci": "PASS",
-    "original_run_rerun": "BLOCKER",
+    "original_run_rerun": "PASS",
     "production_deployment": "PASS",
     "automatic_redeployment": "PASS",
     "production_backup": "PASS",
@@ -56,17 +56,18 @@
   },
   "github": {
     "repository": "karelmartinek-a11y/KajovoDagmar-Chat",
-    "visibility": "private",
+    "visibility": "public",
     "first_green_ci_run": 30600855499,
     "first_green_production_run": 30603571733,
     "automatic_redeployment_run": 30604131291,
-    "last_green_ci_and_deployment_run": 30604831976,
-    "blocked_original_run": {
+    "last_green_ci_and_deployment_run": 30605576740,
+    "original_run_rerun": {
       "run_id": 30503011395,
-      "attempt": 4,
-      "source_and_unit_job_id": 91076361522,
-      "steps_started": 0,
-      "conclusion": "failure"
+      "attempt": 5,
+      "source_and_unit_job_id": 91082902412,
+      "runner_assigned": true,
+      "historical_failure": "evidence directory absent in immutable SHA",
+      "fixed_in_current_main": true
     }
   },
   "production": {
@@ -79,5 +80,5 @@
     "rollback_verified": true,
     "unrelated_service_verified": "dagmar.hcasc.cz"
   },
-  "blocker_count": 1
+  "blocker_count": 0
 }

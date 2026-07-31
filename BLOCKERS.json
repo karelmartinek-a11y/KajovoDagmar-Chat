@@ -1,41 +1,19 @@
 {
   "schema_version": "1.0",
-  "status": "BLOCKER",
-  "generated_at": "2026-07-31T04:56:09Z",
+  "status": "PASS",
+  "generated_at": "2026-07-31T05:53:30Z",
   "ssot_sha256": "d4feeb28d3a85dc663686592c07991f3b8f2fc49c2719dceacb241977900bff9",
-  "blockers": [
-    {
-      "id": "BLK-GITHUB-ORIGINAL-RERUN-002",
-      "phase": "github_ci_rerun",
-      "description": "The original immutable workflow run 30503011395 still cannot obtain a GitHub-hosted runner after the repository was verified private. Attempt 4 ended before any step started with GitHub's account billing/spending-limit annotation. Current-commit CI and production deployment runs are green, but the task's explicit PASS condition requires the original rerun itself to receive a runner.",
-      "command": "gh run watch 30503011395 --repo karelmartinek-a11y/KajovoDagmar-Chat --exit-status",
-      "exit_code": 1,
-      "evidence": {
-        "run_id": 30503011395,
-        "attempt": 4,
-        "head_sha": "dc3d743c340da837d0fb10cc5ab79d36a2e09440",
-        "source_and_unit_job_id": 91076361522,
-        "steps_started": 0,
-        "integration": "skipped",
-        "release_gate": "skipped"
-      },
-      "completed": [
-        "Current-commit CI run 30604831976 executed all required jobs successfully.",
-        "Production deployment and automatic redeployment completed successfully.",
-        "Production backup, isolated restore drill, rollback, TLS, health, and unrelated-service checks passed.",
-        "The repository is private and production remains on the last verified release."
-      ],
-      "not_completed": [
-        "Original run 30503011395 did not receive a runner on rerun attempt 4."
-      ],
-      "required_for_continuation": "GitHub Billing or GitHub Support must clear the billing gate affecting the historical private-repository run; then rerun 30503011395 until source-and-unit receives a runner and all mandatory jobs execute."
-    }
-  ],
+  "blockers": [],
   "resolved": [
     {
       "id": "BLK-GITHUB-BILLING-001",
       "resolved_at": "2026-07-31T03:09:31Z",
       "evidence": "Hosted runners executed all required jobs successfully in run 30600855499 and subsequent runs."
+    },
+    {
+      "id": "BLK-GITHUB-ORIGINAL-RERUN-002",
+      "resolved_at": "2026-07-31T05:53:30Z",
+      "evidence": "Original run 30503011395 attempt 5 received a hosted runner and executed real steps. Its immutable historical SHA reproduced the already-fixed evidence-directory defect. Current-main run 30605576740 then completed source-and-unit, integration, release-gate, and deploy-production successfully."
     }
   ]
 }
