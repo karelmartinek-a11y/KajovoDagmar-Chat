@@ -71,8 +71,8 @@ jobs:
           emulator -avd codex-api30 -no-window -no-audio -no-boot-anim -no-snapshot -no-metrics -accel off -gpu swiftshader_indirect > /tmp/codex-android-emulator.log 2>&1 &
           emulator_pid=$!
           timeout 60s adb wait-for-device || echo 'Android emulator ADB endpoint is still initializing; restarting the isolated ADB server.'
-          adb kill-server || true
-          adb start-server
+          timeout 15s adb kill-server || true
+          timeout 15s adb start-server || true
           boot_deadline=$((SECONDS + 600))
           until adb devices | awk 'NR > 1 && $2 == "device" {found=1} END {exit(found ? 0 : 1)}'; do
             if ! kill -0 "$emulator_pid" 2>/dev/null; then
