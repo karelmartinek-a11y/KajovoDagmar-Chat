@@ -68,14 +68,15 @@ jobs:
           yes | sdkmanager "platform-tools" "emulator" "platforms;android-30" "system-images;android-30;google_apis_playstore;x86"
           printf 'no\n' | avdmanager create avd --name codex-api30 --package "system-images;android-30;google_apis_playstore;x86" --device pixel_2 --force
           avdmanager list avd
-          emulator -avd codex-api30 -no-window -no-audio -no-boot-anim -no-snapshot -no-metrics -accel off -gpu swiftshader_indirect > /tmp/codex-android-emulator.log 2>&1 &
+          # Use a fixed console/ADB port pair so the runner can recover the
+          # emulator even when the local ADB server starts before adbd does.
+          emulator -avd codex-api30 -port 5554 -no-window -no-audio -no-boot-anim -no-snapshot -no-metrics -accel off -gpu swiftshader_indirect > /tmp/codex-android-emulator.log 2>&1 &
           emulator_pid=$!
-          timeout 60s adb wait-for-device || echo 'Android emulator ADB endpoint is still initializing; restarting the isolated ADB server.'
-          timeout 15s adb kill-server || true
           timeout 15s adb start-server || true
+          timeout 15s adb connect 127.0.0.1:5555 || true
           boot_deadline=$((SECONDS + 600))
           boot_log_restarted=0
-          until adb devices | awk 'NR > 1 && $2 == "device" {found=1} END {exit(found ? 0 : 1)}'; do
+          until adb devices | awk 'NR > 1 && ($1 == "emulator-5554" || $1 == "127.0.0.1:5555") && $2 == "device" {found=1} END {exit(found ? 0 : 1)}'; do
             if ! kill -0 "$emulator_pid" 2>/dev/null; then
               echo 'Android emulator exited before boot completed.'
               cat /tmp/codex-android-emulator.log
@@ -83,14 +84,11 @@ jobs:
             fi
             if (( boot_log_restarted == 0 )) && grep -q 'Boot completed' /tmp/codex-android-emulator.log; then
               echo 'Android boot completed but ADB is still offline; restarting the isolated ADB server after boot.'
-              timeout 15s adb kill-server || true
-              timeout 15s adb start-server || true
-              timeout 15s adb reconnect || true
-              timeout 15s adb reconnect offline || true
+              timeout 15s adb connect 127.0.0.1:5555 || true
+              timeout 15s adb reconnect 127.0.0.1:5555 || true
               boot_log_restarted=1
             fi
-            timeout 15s adb reconnect || true
-            timeout 15s adb reconnect offline >/dev/null 2>&1 || true
+            timeout 15s adb connect 127.0.0.1:5555 >/dev/null 2>&1 || true
             if (( SECONDS >= boot_deadline )); then
               echo 'Android emulator did not become online within 600 seconds.'
               cat /tmp/codex-android-emulator.log
