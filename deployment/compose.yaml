@@ -77,7 +77,15 @@ services:
       db:
         condition: service_healthy
     healthcheck:
-      disable: true
+      test:
+        - CMD
+        - python
+        - -c
+        - "import socket; assert b'kajovodagmar.worker' in open('/proc/1/cmdline', 'rb').read(); connection = socket.create_connection(('db', 5432), 3); connection.close()"
+      interval: 15s
+      timeout: 5s
+      retries: 8
+      start_period: 30s
     read_only: true
     tmpfs: [/tmp]
     security_opt: ["no-new-privileges:true"]
@@ -176,7 +184,15 @@ services:
       db:
         condition: service_healthy
     healthcheck:
-      disable: true
+      test:
+        - CMD
+        - python3
+        - -c
+        - "import socket; assert b'backup_agent.py' in open('/proc/1/cmdline', 'rb').read(); connection = socket.create_connection(('db', 5432), 3); connection.close()"
+      interval: 15s
+      timeout: 5s
+      retries: 8
+      start_period: 30s
     security_opt: ["no-new-privileges:true"]
     cap_drop: [ALL]
     cap_add: [CHOWN, SETGID, SETUID]
