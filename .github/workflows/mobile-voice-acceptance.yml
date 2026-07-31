@@ -85,9 +85,12 @@ jobs:
               echo 'Android boot completed but ADB is still offline; restarting the isolated ADB server after boot.'
               timeout 15s adb kill-server || true
               timeout 15s adb start-server || true
+              timeout 15s adb reconnect || true
+              timeout 15s adb reconnect offline || true
               boot_log_restarted=1
             fi
-            adb reconnect offline >/dev/null 2>&1 || true
+            timeout 15s adb reconnect || true
+            timeout 15s adb reconnect offline >/dev/null 2>&1 || true
             if (( SECONDS >= boot_deadline )); then
               echo 'Android emulator did not become online within 600 seconds.'
               cat /tmp/codex-android-emulator.log
