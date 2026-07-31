@@ -8,7 +8,7 @@ permissions:
   contents: read
 concurrency:
   group: quality-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 env:
   KAJOVODAGMAR_ROOT_ENCRYPTION_KEY: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
   KAJOVODAGMAR_INITIALIZATION_SECRET_HASH: '87a559183b8458084db697d3e6f7e05da1b0e6e807ea2ee9f0cc6b94c650e126'
@@ -71,3 +71,40 @@ jobs:
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()
         with: {name: release-evidence, path: release/evidence/generated, if-no-files-found: error}
+  deploy-production:
+    runs-on: ubuntu-24.04
+    needs: release-gate
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    timeout-minutes: 60
+    environment:
+      name: production
+      url: https://chat.hcasc.cz
+    steps:
+      - name: Configure isolated production SSH identity
+        env:
+          PROD_SSH_PRIVATE_KEY: ${{ secrets.PROD_SSH_PRIVATE_KEY }}
+          PROD_SSH_KNOWN_HOSTS: ${{ secrets.PROD_SSH_KNOWN_HOSTS }}
+        run: |
+          umask 077
+          install -d "$RUNNER_TEMP/kajovodagmar-chat-ssh"
+          printf '%s\n' "$PROD_SSH_PRIVATE_KEY" > "$RUNNER_TEMP/kajovodagmar-chat-ssh/id_ed25519"
+          printf '%s\n' "$PROD_SSH_KNOWN_HOSTS" > "$RUNNER_TEMP/kajovodagmar-chat-ssh/known_hosts"
+          ssh-keygen -y -f "$RUNNER_TEMP/kajovodagmar-chat-ssh/id_ed25519" >/dev/null
+      - name: Deploy exact verified commit
+        env:
+          PROD_SSH_HOST: ${{ secrets.PROD_SSH_HOST }}
+          PROD_SSH_PORT: ${{ secrets.PROD_SSH_PORT }}
+          PROD_SSH_USER: ${{ secrets.PROD_SSH_USER }}
+        run: |
+          ssh \
+            -i "$RUNNER_TEMP/kajovodagmar-chat-ssh/id_ed25519" \
+            -o BatchMode=yes \
+            -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile="$RUNNER_TEMP/kajovodagmar-chat-ssh/known_hosts" \
+            -p "$PROD_SSH_PORT" \
+            "$PROD_SSH_USER@$PROD_SSH_HOST" \
+            "sudo -n /usr/local/sbin/deploy-kajovodagmar-chat ${{ github.sha }}"
+      - name: Remove ephemeral SSH material
+        if: always()
+        run: rm -f "$RUNNER_TEMP/kajovodagmar-chat-ssh/id_ed25519"

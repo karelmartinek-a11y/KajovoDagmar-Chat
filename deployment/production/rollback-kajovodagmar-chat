@@ -1,0 +1,24 @@
+#!/bin/bash
+set -Eeuo pipefail
+umask 027
+
+readonly target_sha=${1:-}
+readonly ROOT=/srv/hcasc/kajovodagmar-chat
+
+if [[ ! $target_sha =~ ^[0-9a-f]{40}$ ]]; then
+  echo "Rollback requires an exact deployed commit SHA." >&2
+  exit 64
+fi
+if [[ ! -d $ROOT/releases/$target_sha ]]; then
+  echo "Rollback target is not a preserved release." >&2
+  exit 66
+fi
+
+from_sha=$(<"$ROOT/shared/data/active-release-sha")
+printf '{"event":"rollback.started","from_sha":"%s","to_sha":"%s","timestamp":"%s"}\n' \
+  "$from_sha" "$target_sha" "$(date --iso-8601=seconds)" \
+  >>"$ROOT/shared/logs/deployment-audit.jsonl"
+/usr/local/sbin/deploy-kajovodagmar-chat "$target_sha"
+printf '{"event":"rollback.succeeded","from_sha":"%s","to_sha":"%s","timestamp":"%s"}\n' \
+  "$from_sha" "$target_sha" "$(date --iso-8601=seconds)" \
+  >>"$ROOT/shared/logs/deployment-audit.jsonl"

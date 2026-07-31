@@ -1,0 +1,52 @@
+services:
+  caddy:
+    profiles: [embedded-edge]
+
+  web:
+    image: ${APP_IMAGE:?Exact application image is required}
+    ports:
+      - "127.0.0.1:${APP_LOOPBACK_PORT:?Loopback port is required}:8000"
+    env_file:
+      - path: ${PRODUCTION_ENV_FILE:?Production env file is required}
+        required: true
+    labels:
+      cz.hcasc.application: kajovodagmar-chat
+      cz.hcasc.commit: ${RELEASE_SHA:?Release SHA is required}
+
+  worker:
+    image: ${APP_IMAGE:?Exact application image is required}
+    env_file:
+      - path: ${PRODUCTION_ENV_FILE:?Production env file is required}
+        required: true
+    labels:
+      cz.hcasc.application: kajovodagmar-chat
+      cz.hcasc.commit: ${RELEASE_SHA:?Release SHA is required}
+
+  db:
+    image: ${POSTGRES_IMAGE:?Exact PostgreSQL image is required}
+    labels:
+      cz.hcasc.application: kajovodagmar-chat
+      cz.hcasc.commit: ${RELEASE_SHA:?Release SHA is required}
+
+  backup-agent:
+    image: ${POSTGRES_IMAGE:?Exact PostgreSQL image is required}
+    labels:
+      cz.hcasc.application: kajovodagmar-chat
+      cz.hcasc.commit: ${RELEASE_SHA:?Release SHA is required}
+
+volumes:
+  app_runtime:
+    driver_opts:
+      type: none
+      o: bind
+      device: ${SHARED_DATA_DIR:?Shared data directory is required}/runtime
+  backup_repository:
+    driver_opts:
+      type: none
+      o: bind
+      device: ${BACKUP_REPOSITORY_DIR:?Backup repository directory is required}
+  restore_test_data:
+    driver_opts:
+      type: none
+      o: bind
+      device: ${SHARED_DATA_DIR:?Shared data directory is required}/restore-test

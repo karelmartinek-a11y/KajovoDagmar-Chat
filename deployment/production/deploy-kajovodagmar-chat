@@ -1,0 +1,199 @@
+#!/bin/bash
+set -Eeuo pipefail
+umask 027
+
+readonly RELEASE_SHA=${1:-}
+readonly ROOT=/srv/hcasc/kajovodagmar-chat
+readonly REPOSITORY=$ROOT/repo
+readonly RELEASES=$ROOT/releases
+readonly SHARED=$ROOT/shared
+readonly ENV_FILE=$SHARED/env/production.env
+readonly GITHUB_KEY=$SHARED/secrets/github-readonly
+readonly GITHUB_KNOWN_HOSTS=$SHARED/secrets/github-known-hosts
+readonly TOOLS=$SHARED/tools
+readonly ACTIVE_SHA_FILE=$SHARED/data/active-release-sha
+readonly PROJECT=kajovodagmar-chat
+readonly DOMAIN=chat.hcasc.cz
+readonly LOOPBACK_PORT=18180
+readonly POSTGRES_IMAGE=kajovodagmar-chat-postgres:17-pgbackrest-2.59.0
+readonly GIT_URL=git@github.com:karelmartinek-a11y/KajovoDagmar-Chat.git
+
+if [[ ! $RELEASE_SHA =~ ^[0-9a-f]{40}$ ]]; then
+  echo "Deployment requires one exact 40-character lowercase commit SHA." >&2
+  exit 64
+fi
+
+exec 9>/run/lock/kajovodagmar-chat-deploy.lock
+if ! flock -n 9; then
+  echo "Another KájovoDagmar-Chat deployment is active." >&2
+  exit 75
+fi
+
+for required in "$ENV_FILE" "$GITHUB_KEY" "$GITHUB_KNOWN_HOSTS"; do
+  if [[ ! -f $required ]]; then
+    echo "Required protected file is missing: $required" >&2
+    exit 78
+  fi
+done
+
+available_kb=$(df -Pk "$ROOT" | awk 'NR == 2 {print $4}')
+if (( available_kb < 8 * 1024 * 1024 )); then
+  echo "At least 8 GiB of free disk is required for a deployment." >&2
+  exit 73
+fi
+
+export GIT_SSH_COMMAND="ssh -i $GITHUB_KEY -o IdentitiesOnly=yes -o UserKnownHostsFile=$GITHUB_KNOWN_HOSTS -o StrictHostKeyChecking=yes"
+export PRODUCTION_ENV_FILE=$ENV_FILE
+export SHARED_DATA_DIR=$SHARED/data
+export BACKUP_REPOSITORY_DIR=$SHARED/backups/pgbackrest
+export APP_LOOPBACK_PORT=$LOOPBACK_PORT
+export POSTGRES_IMAGE
+export RELEASE_SHA
+
+previous_sha=
+if [[ -f $ACTIVE_SHA_FILE ]]; then
+  previous_sha=$(<"$ACTIVE_SHA_FILE")
+fi
+
+release=$RELEASES/$RELEASE_SHA
+evidence=$SHARED/logs/releases/$RELEASE_SHA
+app_image=kajovodagmar-chat:$RELEASE_SHA
+deployment_succeeded=false
+
+compose_for() {
+  local release_directory=$1
+  local exact_sha=$2
+  shift 2
+  env \
+    RELEASE_SHA="$exact_sha" \
+    APP_IMAGE=kajovodagmar-chat:"$exact_sha" \
+    docker compose \
+      --project-name "$PROJECT" \
+      --env-file "$ENV_FILE" \
+      --file "$release_directory/deployment/compose.yaml" \
+      --file "$release_directory/deployment/production/compose.yaml" \
+      "$@"
+}
+
+restore_previous_release() {
+  if [[ ! $previous_sha =~ ^[0-9a-f]{40}$ || $previous_sha == "$RELEASE_SHA" ]]; then
+    return 1
+  fi
+  local previous_release=$RELEASES/$previous_sha
+  if [[ ! -d $previous_release ]]; then
+    return 1
+  fi
+  echo "Restoring previous application release $previous_sha." >&2
+  compose_for "$previous_release" "$previous_sha" up -d --wait --no-build --remove-orphans
+  curl --fail --silent --show-error --max-time 15 \
+    "http://127.0.0.1:$LOOPBACK_PORT/api/v1/health/ready" >/dev/null
+  ln -sfn "$previous_release" "$ROOT/current.rollback"
+  mv -Tf "$ROOT/current.rollback" "$ROOT/current"
+  printf '%s\n' "$previous_sha" >"$ACTIVE_SHA_FILE.tmp"
+  mv -f "$ACTIVE_SHA_FILE.tmp" "$ACTIVE_SHA_FILE"
+}
+
+on_exit() {
+  local status=$?
+  if (( status != 0 )) && [[ $deployment_succeeded != true ]]; then
+    set +e
+    restore_previous_release
+    rollback_status=$?
+    printf '{"event":"deployment.failed","sha":"%s","rollback_status":%d,"timestamp":"%s"}\n' \
+      "$RELEASE_SHA" "$rollback_status" "$(date --iso-8601=seconds)" \
+      >>"$SHARED/logs/deployment-audit.jsonl"
+  fi
+  exit "$status"
+}
+trap on_exit EXIT
+
+mkdir -p "$RELEASES" "$evidence" "$TOOLS"
+
+if [[ ! -f $REPOSITORY/HEAD ]]; then
+  if [[ -d $REPOSITORY ]]; then
+    rmdir "$REPOSITORY"
+  fi
+  git clone --mirror "$GIT_URL" "$REPOSITORY"
+else
+  git --git-dir="$REPOSITORY" remote set-url origin "$GIT_URL"
+fi
+git --git-dir="$REPOSITORY" fetch --prune origin \
+  '+refs/heads/main:refs/remotes/origin/main'
+git --git-dir="$REPOSITORY" cat-file -e "$RELEASE_SHA^{commit}"
+git --git-dir="$REPOSITORY" merge-base --is-ancestor \
+  "$RELEASE_SHA" refs/remotes/origin/main
+
+if [[ ! -d $release ]]; then
+  temporary_release=$RELEASES/.tmp-"$RELEASE_SHA"-$$
+  mkdir "$temporary_release"
+  git --git-dir="$REPOSITORY" archive "$RELEASE_SHA" | tar -x -C "$temporary_release"
+  printf '%s\n' "$RELEASE_SHA" >"$temporary_release/.release-sha"
+  mv "$temporary_release" "$release"
+fi
+test "$(<"$release/.release-sha")" = "$RELEASE_SHA"
+test "$(git --git-dir="$REPOSITORY" rev-parse "$RELEASE_SHA^{commit}")" = "$RELEASE_SHA"
+
+"$release/scripts/install_ci_security_tools.sh" "$TOOLS" >"$evidence/security-tools.txt"
+export PATH=$TOOLS:$PATH
+
+docker build --pull --tag "$app_image" \
+  --file "$release/deployment/Dockerfile" "$release"
+docker build --pull --tag "$POSTGRES_IMAGE" \
+  --file "$release/deployment/Dockerfile.postgres" "$release"
+docker image inspect "$app_image" --format '{{.Id}}' >"$evidence/image-id.txt"
+
+syft dir:"$release/backend" --exclude './.venv/**' \
+  -o cyclonedx-json="$evidence/sbom-backend-source.cdx.json"
+syft dir:"$release/web" --exclude './node_modules/**' --exclude './dist/**' \
+  -o cyclonedx-json="$evidence/sbom-frontend-source.cdx.json"
+syft "$app_image" -o cyclonedx-json="$evidence/sbom-image.cdx.json"
+grype "$app_image" --vex "$release/security/vex.openvex.json" \
+  -o json >"$evidence/grype-image.json"
+docker run --rm \
+  --user 0:0 \
+  --volume "$release:/workspace:ro" \
+  --volume "$evidence:/evidence:ro" \
+  --entrypoint python \
+  "$app_image" \
+  /workspace/scripts/check_vulnerability_report.py \
+  /evidence/grype-image.json \
+  --vex /workspace/security/vex.openvex.json \
+  --policy /workspace/security/vex-policy.json \
+  >"$evidence/vulnerability-gate.txt"
+
+compose_for "$release" "$RELEASE_SHA" up -d --wait --no-build db pgbackrest
+compose_for "$release" "$RELEASE_SHA" exec -T --user postgres db \
+  pgbackrest --stanza=kajovodagmar stanza-create
+compose_for "$release" "$RELEASE_SHA" exec -T --user postgres db \
+  pgbackrest --stanza=kajovodagmar --type=full backup
+compose_for "$release" "$RELEASE_SHA" exec -T --user postgres db \
+  pgbackrest --stanza=kajovodagmar check
+compose_for "$release" "$RELEASE_SHA" exec -T --user postgres db \
+  pgbackrest --stanza=kajovodagmar info --output=json \
+  >"$evidence/pre-migration-backup.json"
+
+compose_for "$release" "$RELEASE_SHA" run --rm --no-deps web alembic upgrade head
+compose_for "$release" "$RELEASE_SHA" up -d --wait --no-build --remove-orphans
+compose_for "$release" "$RELEASE_SHA" exec -T web kajovodagmar bootstrap-instance \
+  >"$evidence/bootstrap-instance.json"
+
+curl --fail --silent --show-error --max-time 15 \
+  "http://127.0.0.1:$LOOPBACK_PORT/api/v1/health/ready" \
+  >"$evidence/internal-health.json"
+curl --fail --silent --show-error --max-time 20 \
+  "https://$DOMAIN/api/v1/health/ready" >"$evidence/public-health.json"
+curl --fail --silent --show-error --max-time 20 "https://$DOMAIN/" |
+  grep -F "KájovoDagmar" >"$evidence/ui-branding.txt"
+curl --fail --silent --show-error --max-time 20 \
+  https://dagmar.hcasc.cz/ >/dev/null
+
+ln -sfn "$release" "$ROOT/current.new"
+mv -Tf "$ROOT/current.new" "$ROOT/current"
+printf '%s\n' "$RELEASE_SHA" >"$ACTIVE_SHA_FILE.tmp"
+mv -f "$ACTIVE_SHA_FILE.tmp" "$ACTIVE_SHA_FILE"
+printf '{"event":"deployment.succeeded","sha":"%s","previous_sha":"%s","timestamp":"%s"}\n' \
+  "$RELEASE_SHA" "$previous_sha" "$(date --iso-8601=seconds)" \
+  >>"$SHARED/logs/deployment-audit.jsonl"
+deployment_succeeded=true
+trap - EXIT
+echo "KájovoDagmar-Chat deployment succeeded for $RELEASE_SHA."

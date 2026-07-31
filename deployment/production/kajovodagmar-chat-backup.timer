@@ -1,0 +1,11 @@
+[Unit]
+Description=Daily KájovoDagmar-Chat verified encrypted backup
+
+[Timer]
+OnCalendar=*-*-* 02:17:00 Europe/Prague
+Persistent=true
+RandomizedDelaySec=900
+Unit=kajovodagmar-chat-backup.service
+
+[Install]
+WantedBy=timers.target

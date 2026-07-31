@@ -1,0 +1,14 @@
+#!/bin/bash
+set -eu -o pipefail
+
+case "${SSH_ORIGINAL_COMMAND:-}" in
+  "sudo -n /usr/local/sbin/deploy-kajovodagmar-chat "[0-9a-f][0-9a-f]*)
+    sha=${SSH_ORIGINAL_COMMAND##* }
+    if [[ $sha =~ ^[0-9a-f]{40}$ ]]; then
+      exec sudo -n /usr/local/sbin/deploy-kajovodagmar-chat "$sha"
+    fi
+    ;;
+esac
+
+echo "Only an exact KájovoDagmar-Chat deployment command is allowed." >&2
+exit 64

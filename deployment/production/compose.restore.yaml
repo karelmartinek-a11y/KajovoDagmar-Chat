@@ -1,0 +1,52 @@
+services:
+  restore-db:
+    image: ${POSTGRES_IMAGE:?Exact PostgreSQL image is required}
+    environment:
+      POSTGRES_DB: kajovodagmar
+      POSTGRES_USER: kajovodagmar
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?PostgreSQL password is required}
+      PGBACKREST_REPO1_CIPHER_PASS: ${PGBACKREST_REPO1_CIPHER_PASS:?Backup encryption passphrase is required}
+    volumes:
+      - restore_postgres_data:/var/lib/postgresql/data
+      - ${BACKUP_REPOSITORY_DIR:?Backup repository directory is required}:/var/lib/pgbackrest:ro
+      - ../postgresql.conf:/etc/postgresql/postgresql.conf:ro
+      - ../pgbackrest/pgbackrest.conf:/etc/pgbackrest/pgbackrest.conf:ro
+    entrypoint:
+      - sh
+      - -ec
+      - |
+        if [ ! -s /var/lib/postgresql/data/PG_VERSION ]; then
+          chown -R postgres:postgres /var/lib/postgresql/data
+          gosu postgres pgbackrest --stanza=kajovodagmar \
+            --pg1-path=/var/lib/postgresql/data \
+            --type=immediate restore
+        fi
+        exec docker-entrypoint.sh postgres \
+          -c config_file=/etc/postgresql/postgresql.conf \
+          -c archive_mode=off \
+          -c archive_command=''
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U kajovodagmar -d kajovodagmar"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+    networks: [restore]
+
+  restore-verifier:
+    image: ${APP_IMAGE:?Exact application image is required}
+    environment:
+      KAJOVODAGMAR_DATABASE_URL: postgresql+asyncpg://kajovodagmar:${POSTGRES_PASSWORD}@restore-db:5432/kajovodagmar
+      KAJOVODAGMAR_ROOT_ENCRYPTION_KEY: ${KAJOVODAGMAR_ROOT_ENCRYPTION_KEY:?Root encryption key is required}
+      KAJOVODAGMAR_INITIALIZATION_SECRET_HASH: ${KAJOVODAGMAR_INITIALIZATION_SECRET_HASH:?Initialization digest is required}
+    depends_on:
+      restore-db:
+        condition: service_healthy
+    command: ["kajovodagmar", "integrity-check"]
+    networks: [restore]
+
+networks:
+  restore:
+    internal: true
+
+volumes:
+  restore_postgres_data: {}

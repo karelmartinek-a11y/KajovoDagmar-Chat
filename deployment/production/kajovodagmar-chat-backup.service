@@ -1,0 +1,19 @@
+[Unit]
+Description=KájovoDagmar-Chat verified encrypted backup
+Requires=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+User=root
+ExecStart=/usr/local/sbin/backup-kajovodagmar-chat
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
+PrivateTmp=true
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/srv/hcasc/kajovodagmar-chat /run/lock
+
+[Install]
+WantedBy=multi-user.target

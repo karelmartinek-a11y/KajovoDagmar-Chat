@@ -1,0 +1,45 @@
+#!/bin/bash
+set -Eeuo pipefail
+umask 027
+
+readonly ROOT=/srv/hcasc/kajovodagmar-chat
+readonly ENV_FILE=$ROOT/shared/env/production.env
+readonly ACTIVE_SHA_FILE=$ROOT/shared/data/active-release-sha
+readonly LOG=$ROOT/shared/logs/backup-audit.jsonl
+
+exec 9>/run/lock/kajovodagmar-chat-backup.lock
+flock -n 9 || exit 75
+
+sha=$(<"$ACTIVE_SHA_FILE")
+[[ $sha =~ ^[0-9a-f]{40}$ ]]
+release=$ROOT/releases/$sha
+
+export RELEASE_SHA=$sha
+export APP_IMAGE=kajovodagmar-chat:$sha
+export POSTGRES_IMAGE=kajovodagmar-chat-postgres:17-pgbackrest-2.59.0
+export PRODUCTION_ENV_FILE=$ENV_FILE
+export SHARED_DATA_DIR=$ROOT/shared/data
+export BACKUP_REPOSITORY_DIR=$ROOT/shared/backups/pgbackrest
+export APP_LOOPBACK_PORT=18180
+
+compose=(
+  docker compose
+  --project-name kajovodagmar-chat
+  --env-file "$ENV_FILE"
+  --file "$release/deployment/compose.yaml"
+  --file "$release/deployment/production/compose.yaml"
+)
+
+available_kb=$(df -Pk "$ROOT/shared/backups" | awk 'NR == 2 {print $4}')
+(( available_kb >= 4 * 1024 * 1024 ))
+"${compose[@]}" exec -T --user postgres db \
+  pgbackrest --stanza=kajovodagmar --type=diff backup
+"${compose[@]}" exec -T --user postgres db \
+  pgbackrest --stanza=kajovodagmar check
+info=$("${compose[@]}" exec -T --user postgres db \
+  pgbackrest --stanza=kajovodagmar info --output=json)
+printf '%s\n' "$info" >"$ROOT/shared/logs/last-backup-info.json.tmp"
+mv -f "$ROOT/shared/logs/last-backup-info.json.tmp" \
+  "$ROOT/shared/logs/last-backup-info.json"
+printf '{"event":"backup.verified","sha":"%s","timestamp":"%s"}\n' \
+  "$sha" "$(date --iso-8601=seconds)" >>"$LOG"

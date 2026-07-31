@@ -1,0 +1,44 @@
+#!/bin/bash
+set -Eeuo pipefail
+umask 027
+
+readonly ROOT=/srv/hcasc/kajovodagmar-chat
+readonly ENV_FILE=$ROOT/shared/env/production.env
+readonly ACTIVE_SHA_FILE=$ROOT/shared/data/active-release-sha
+
+exec 9>/run/lock/kajovodagmar-chat-restore-drill.lock
+flock -n 9 || exit 75
+
+sha=$(<"$ACTIVE_SHA_FILE")
+[[ $sha =~ ^[0-9a-f]{40}$ ]]
+release=$ROOT/releases/$sha
+project=kajovodagmar-chat-restore-$(date +%s)
+
+export APP_IMAGE=kajovodagmar-chat:$sha
+export POSTGRES_IMAGE=kajovodagmar-chat-postgres:17-pgbackrest-2.59.0
+export BACKUP_REPOSITORY_DIR=$ROOT/shared/backups/pgbackrest
+
+compose=(
+  docker compose
+  --project-name "$project"
+  --env-file "$ENV_FILE"
+  --file "$release/deployment/production/compose.restore.yaml"
+)
+cleanup() {
+  "${compose[@]}" down --volumes --remove-orphans >/dev/null 2>&1 || true
+}
+trap cleanup EXIT
+
+"${compose[@]}" up -d --wait restore-db
+"${compose[@]}" run --rm restore-verifier
+integrity=$("${compose[@]}" exec -T restore-db \
+  psql -U kajovodagmar -d kajovodagmar -Atc \
+  "select specification_revision || ':' || state || ':' ||
+          (select count(*) from conversation) || ':' ||
+          (select count(*) from memory_item) || ':' ||
+          (select count(*) from audit_event)
+   from system_instance where singleton_key='primary'")
+[[ $integrity =~ ^v0021:(uninitialized|active):[0-9]+:[0-9]+:[0-9]+$ ]]
+printf '{"event":"backup.restore_drill.verified","sha":"%s","integrity":"%s","timestamp":"%s"}\n' \
+  "$sha" "$integrity" "$(date --iso-8601=seconds)" \
+  >>"$ROOT/shared/logs/restore-audit.jsonl"
