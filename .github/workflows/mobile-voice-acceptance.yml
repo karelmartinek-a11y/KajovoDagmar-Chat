@@ -81,7 +81,7 @@ jobs:
               cat /tmp/codex-android-emulator.log
               exit 1
             fi
-            if (( boot_log_restarted == 0 )) && rg -q 'Boot completed' /tmp/codex-android-emulator.log; then
+            if (( boot_log_restarted == 0 )) && grep -q 'Boot completed' /tmp/codex-android-emulator.log; then
               echo 'Android boot completed but ADB is still offline; restarting the isolated ADB server after boot.'
               timeout 15s adb kill-server || true
               timeout 15s adb start-server || true
