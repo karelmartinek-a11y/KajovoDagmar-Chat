@@ -33,6 +33,7 @@ def test_deployment_requires_exact_sha_and_protected_ssh() -> None:
     for required_gate in [
         "sbom-image.cdx.json",
         "grype-image.json",
+        "jq -er",
         'docker tag "$app_image" "$vex_image"',
         'docker image inspect "$vex_image"',
         "pre-migration-backup.json",
