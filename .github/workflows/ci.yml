@@ -61,7 +61,7 @@ jobs:
           ./scripts/install_ci_security_tools.sh "$RUNNER_TEMP/security-tools"
           echo "$RUNNER_TEMP/security-tools" >> "$GITHUB_PATH"
       - run: make bootstrap
-      - run: npx --prefix web playwright install --with-deps chromium
+      - run: npx --prefix web playwright install --with-deps chromium webkit
       - env:
           POSTGRES_PASSWORD: release-check-password
           PGBACKREST_REPO1_CIPHER_PASS: synthetic-release-check-backup-encryption-passphrase
