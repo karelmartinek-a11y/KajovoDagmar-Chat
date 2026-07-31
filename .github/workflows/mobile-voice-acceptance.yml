@@ -70,13 +70,13 @@ jobs:
         with:
           api-level: 30
           target: playstore
-          arch: x86
+          arch: arm64-v8a
           profile: pixel_2
           emulator-port: 5554
           force-avd-creation: true
-          # Let the GitHub-hosted runner use KVM when available; forcing
-          # software emulation leaves the Play Store image's adbd offline.
-          disable-linux-hw-accel: false
+          # GitHub-hosted Linux runners do not grant this job /dev/kvm. Use
+          # the supported ARM64 image so software emulation remains valid.
+          disable-linux-hw-accel: true
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none
           disable-animations: true
           script: |
