@@ -33,6 +33,31 @@ type Provider = {
   secret_hint: string | null;
   version: number;
   models: Model[];
+  catalog_refreshed_at?: string | null;
+  catalog_state?: string;
+};
+type ModelOption = {
+  id: string;
+  external_id: string;
+  display_name: string;
+  recommended: boolean;
+  recommendation_reason: string;
+};
+type ModelRoleOptions = {
+  title: string;
+  plain_description: string;
+  more_information: string;
+  recommended_model_id: string | null;
+  selected_model_id: string | null;
+  status: string;
+  options: ModelOption[];
+};
+type ModelOptions = {
+  policy_version: string;
+  provider_verified: boolean;
+  catalog_refreshed_at: string | null;
+  catalog_state: string;
+  roles: Record<string, ModelRoleOptions>;
 };
 type ExportRecord = {
   id: string;
@@ -97,10 +122,13 @@ export function SettingsPage() {
   const [settings, setSettings] = useState<Settings>({});
   const [draft, setDraft] = useState<Settings>({});
   const [providers, setProviders] = useState<Provider[]>([]);
+  const [modelOptions, setModelOptions] = useState<Record<string, ModelOptions>>({});
   const [activeArea, setActiveArea] = useState('general');
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [providerForm, setProviderForm] = useState({
+    id: undefined as string | undefined,
+    expected_version: 0,
     display_name: 'OpenAI',
     base_url: 'https://api.openai.com/v1',
     api_key: '',
@@ -134,6 +162,34 @@ export function SettingsPage() {
       setSettings(all);
       setDraft(structuredClone(all));
       setProviders(providerResult.items);
+      const primaryProvider = providerResult.items[0];
+      if (primaryProvider && !providerForm.api_key) {
+        setProviderForm((current) => ({
+          ...current,
+          id: primaryProvider.id,
+          expected_version: primaryProvider.version,
+          display_name: primaryProvider.display_name,
+          base_url: primaryProvider.base_url,
+        }));
+      }
+      const optionEntries = await Promise.all(
+        providerResult.items
+          .filter((provider) => provider.verification_state === 'verified')
+          .map(async (provider) => {
+            try {
+              const result = await api<ModelOptions>(`/providers/${provider.id}/model-options`);
+              if (!result || !result.roles) return [provider.id, null] as const;
+              return [provider.id, result] as const;
+            } catch {
+              return [provider.id, null] as const;
+            }
+          }),
+      );
+      setModelOptions(
+        Object.fromEntries(
+          optionEntries.filter((entry): entry is [string, ModelOptions] => entry[1] !== null),
+        ),
+      );
       setEmailState(email);
       setExports(exportResult.items);
       if (email.configured)
@@ -200,14 +256,17 @@ export function SettingsPage() {
         method: 'PUT',
         body: JSON.stringify({
           provider_type: 'openai',
+          id: providerForm.id,
           display_name: providerForm.display_name,
           base_url: providerForm.base_url,
           api_key: providerForm.api_key,
-          expected_version: 0,
+          expected_version: providerForm.expected_version,
         }),
       });
       setProviderForm({ ...providerForm, api_key: '' });
-      setNotice('Poskytovatel byl uložen. Před použitím proveďte skutečný test spojení.');
+      setNotice(
+        'API klíč byl ověřen a nabídka modelů byla aktualizována. Doporučená sestava je připravena k ruční úpravě.',
+      );
       await load();
     } catch (reason) {
       setError(reason instanceof ApiError ? reason.message : 'Poskytovatele se nepodařilo uložit.');
@@ -221,6 +280,25 @@ export function SettingsPage() {
       await load();
     } catch (reason) {
       setError(reason instanceof ApiError ? reason.message : 'Ověření poskytovatele selhalo.');
+    }
+  }
+
+  async function applyRecommended(provider: Provider) {
+    try {
+      const result = await api<{ options: ModelOptions }>(
+        `/providers/${provider.id}/apply-recommended-models`,
+        { method: 'POST' },
+      );
+      setNotice(
+        'API klíč byl ověřen a nabídka modelů byla aktualizována. Nastavili jsme doporučenou sestavu pro rychlý a kvalitní hlasový rozhovor.',
+      );
+      if (result.options)
+        setModelOptions((current) => ({ ...current, [provider.id]: result.options }));
+      await load();
+    } catch (reason) {
+      setError(
+        reason instanceof ApiError ? reason.message : 'Doporučenou sestavu se nepodařilo použít.',
+      );
     }
   }
 
@@ -387,7 +465,19 @@ export function SettingsPage() {
           {activeArea === 'models' && (
             <section className="panel stack">
               <h2>Modely a poskytovatelé</h2>
-              <p className="muted">Model lze zvolit teprve po skutečném ověření poskytovatele.</p>
+              <div className="model-explainer" role="note">
+                <h3>Proč je modelů více?</h3>
+                <p>
+                  Dagmar nepoužívá jeden model na všechno. Jiný model rozumí obsahu rozhovoru, jiný
+                  převádí váš hlas na text, jiný vytváří mluvenou odpověď a další pomáhá hledat v
+                  historii a paměti. Díky tomu lze pro každou činnost vybrat model, který je
+                  přesnější, rychlejší nebo hospodárnější.
+                </p>
+              </div>
+              <p className="muted">
+                Nabídky pocházejí z aktuálního katalogu ověřeného vaším API klíčem. Každá role má
+                vlastní bezpečně filtrované možnosti.
+              </p>
               {providers.map((provider) => (
                 <article className="provider-card" key={provider.id}>
                   <div>
@@ -403,7 +493,10 @@ export function SettingsPage() {
                       : 'Klíč chybí'}
                   </span>
                   <button onClick={() => void verifyProvider(provider)}>
-                    Ověřit spojení a katalog
+                    Znovu ověřit klíč a nabídku modelů
+                  </button>
+                  <button onClick={() => void applyRecommended(provider)}>
+                    Použít doporučenou sestavu
                   </button>
                 </article>
               ))}
@@ -440,10 +533,91 @@ export function SettingsPage() {
                 </label>
                 <button className="primary">Bezpečně uložit poskytovatele</button>
               </form>
-              {renderArea('models', draft.models, change, availableModels)}
+              {Object.entries(modelOptions).map(([providerId, options]) => (
+                <div className="model-role-grid" key={providerId}>
+                  {Object.entries(options.roles).map(([role, roleOptions]) => {
+                    const setting = draft.models?.[role];
+                    if (!setting) return null;
+                    return (
+                      <article className="model-role-card" key={role}>
+                        <div className="row row-wrap">
+                          <h3>{roleOptions.title}</h3>
+                          {roleOptions.recommended_model_id && (
+                            <span className="recommendation-badge">Doporučeno</span>
+                          )}
+                        </div>
+                        <p>{roleOptions.plain_description}</p>
+                        <details>
+                          <summary>Více informací</summary>
+                          <p>{roleOptions.more_information}</p>
+                        </details>
+                        <label htmlFor={`model-${providerId}-${role}`}>Vybraný model</label>
+                        <select
+                          id={`model-${providerId}-${role}`}
+                          aria-describedby={`model-help-${providerId}-${role}`}
+                          value={String(setting.value)}
+                          onChange={(event) => change('models', role, event.target.value)}
+                        >
+                          <option value="">Nenastaveno – tato schopnost je blokována</option>
+                          {roleOptions.options.map((option) => (
+                            <option key={option.id} value={option.id}>
+                              {option.display_name}
+                              {option.recommended ? ' · Doporučeno' : ''}
+                            </option>
+                          ))}
+                        </select>
+                        <small id={`model-help-${providerId}-${role}`}>
+                          {roleOptions.options.find(
+                            (option) => option.id === roleOptions.recommended_model_id,
+                          )?.recommendation_reason ??
+                            'Pro tuto roli není v katalogu dostupný podporovaný model.'}{' '}
+                          Technický název:{' '}
+                          {roleOptions.options.find((option) => option.id === String(setting.value))
+                            ?.external_id ?? '—'}
+                          . Změna: {effectLabel(setting.effect_boundary)}.
+                        </small>
+                        <span className={`capability-state ${roleOptions.status}`}>
+                          {roleOptions.status === 'ready' ? 'Připraveno' : 'Chybí vhodný model'}
+                        </span>
+                      </article>
+                    );
+                  })}
+                </div>
+              ))}
+              <article className="model-role-card">
+                <h3>Barva hlasu Dagmar</h3>
+                <p>
+                  Určuje, jak Dagmar zní – například jemněji, výrazněji nebo klidněji. Nejde o AI
+                  model a tato volba nemění chytrost ani obsah odpovědi.
+                </p>
+                {draft.voice?.voice_id && (
+                  <select
+                    aria-label="Barva hlasu Dagmar"
+                    value={String(draft.voice.voice_id.value)}
+                    onChange={(event) => change('voice', 'voice_id', event.target.value)}
+                  >
+                    {[
+                      'marin',
+                      'cedar',
+                      'coral',
+                      'alloy',
+                      'echo',
+                      'fable',
+                      'onyx',
+                      'nova',
+                      'shimmer',
+                    ].map((voice) => (
+                      <option key={voice} value={voice}>
+                        {voice}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </article>
               <button className="primary" onClick={() => void saveArea('models')}>
                 Uložit výběr modelů
               </button>
+              <button onClick={() => void saveArea('voice')}>Uložit barvu hlasu</button>
             </section>
           )}
           {activeArea !== 'models' &&

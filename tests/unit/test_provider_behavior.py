@@ -21,6 +21,7 @@ from kajovodagmar.providers.contracts import ChatMessage, ChatRequest, ProviderM
 from kajovodagmar.providers.openai_compatible import OpenAICompatibleProvider
 from kajovodagmar.providers.service import ProviderService
 from kajovodagmar.security.crypto import SecretCipher
+from kajovodagmar.types import utc_now
 
 ROOT_KEY = "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8"
 
@@ -128,7 +129,7 @@ async def test_provider_configuration_save_verify_and_runtime() -> None:
     assert row.enabled is True
     assert row.verification_state == "verified"
     assert len(catalog) == 2
-    assert existing.display_name == "Model B"
+    assert existing.display_name == "Model A"
 
     runtime_service = provider_service()
     no_secret = ProviderConfiguration(
@@ -143,6 +144,16 @@ async def test_provider_configuration_save_verify_and_runtime() -> None:
     no_secret.secret_id = secret_id
     with pytest.raises(CapabilityUnavailableError):
         await runtime_service.runtime(cast(Any, Session(gets=[None])), no_secret)
+    revoked = EncryptedSecret(
+        id=secret_id,
+        purpose="provider",
+        ciphertext="ciphertext",
+        key_version=1,
+        masked_hint="••••oked",
+        revoked_at=utc_now(),
+    )
+    with pytest.raises(CapabilityUnavailableError):
+        await runtime_service.runtime(cast(Any, Session(gets=[revoked])), no_secret)
     encrypted = runtime_service.cipher.encrypt(
         "api-value", purpose="provider_api_key", record_id=str(no_secret.id)
     )
@@ -162,6 +173,119 @@ async def test_provider_configuration_save_verify_and_runtime() -> None:
     )
     assert runtime.api_key == "api-value"
     assert runtime_service._mask("abc") == "••••"
+
+
+@pytest.mark.asyncio
+async def test_provider_key_replacement_revokes_previous_secret() -> None:
+    service = provider_service()
+    row = ProviderConfiguration(
+        id=uuid4(),
+        provider_type="openai",
+        display_name="OpenAI",
+        base_url="https://provider.invalid/v1",
+        secret_id=uuid4(),
+    )
+    row.version = 1
+    old_secret = EncryptedSecret(
+        id=row.secret_id,
+        purpose="provider",
+        ciphertext="ciphertext",
+        key_version=1,
+        masked_hint="••••old",
+    )
+    await service.save(
+        cast(Any, Session(gets=[row, old_secret])),
+        provider_id=row.id,
+        provider_type="openai",
+        display_name="OpenAI",
+        base_url=row.base_url,
+        api_key="new-secret-token",
+        expected_version=1,
+        context=AuditContext("administrator", uuid4()),
+    )
+    assert old_secret.revoked_at is not None
+
+
+@pytest.mark.asyncio
+async def test_provider_key_replacement_tolerates_missing_previous_secret() -> None:
+    service = provider_service()
+    row = ProviderConfiguration(
+        id=uuid4(),
+        provider_type="openai",
+        display_name="OpenAI",
+        base_url="https://provider.invalid/v1",
+        secret_id=uuid4(),
+    )
+    row.version = 1
+    await service.save(
+        cast(Any, Session(gets=[row, None])),
+        provider_id=row.id,
+        provider_type="openai",
+        display_name="OpenAI",
+        base_url=row.base_url,
+        api_key="replacement-token",
+        expected_version=1,
+        context=AuditContext("administrator", uuid4()),
+    )
+
+
+@pytest.mark.asyncio
+async def test_provider_verification_reuses_existing_role_entry() -> None:
+    service = provider_service()
+    row = ProviderConfiguration(
+        id=uuid4(),
+        provider_type="openai",
+        display_name="OpenAI",
+        base_url="https://provider.invalid/v1",
+    )
+    previous = SimpleNamespace(available=True)
+
+    class CatalogSession(Session):
+        async def scalars(self, _query: Any) -> Rows:
+            return Rows([previous])
+
+    service.runtime = AsyncMock(
+        return_value=SimpleNamespace(
+            list_models=AsyncMock(
+                return_value=[ProviderModel("whisper-1", "Whisper", frozenset())]
+            )
+        )
+    )
+    session = CatalogSession(gets=[row], scalars=[previous])
+    service_result = await service.verify(
+        cast(Any, session), row.id, AuditContext("administrator", uuid4())
+    )
+    assert previous.available is True
+    assert service_result[0] is previous
+
+
+@pytest.mark.asyncio
+async def test_provider_verification_keeps_catalog_on_failure_and_rejects_empty() -> (
+    None
+):
+    service = provider_service()
+    row = ProviderConfiguration(
+        id=uuid4(),
+        provider_type="openai",
+        display_name="OpenAI",
+        base_url="https://provider.invalid/v1",
+    )
+    context = AuditContext("administrator", uuid4())
+    service.runtime = AsyncMock(
+        return_value=SimpleNamespace(
+            list_models=AsyncMock(side_effect=RuntimeError("temporary failure"))
+        )
+    )
+    with pytest.raises(RuntimeError):
+        await service.verify(cast(Any, Session(gets=[row])), row.id, context)
+    assert row.catalog_state == "stale_error"
+
+    service.runtime = AsyncMock(
+        return_value=SimpleNamespace(list_models=AsyncMock(return_value=[]))
+    )
+    with pytest.raises(DomainError, match="prázdnou nabídku"):
+        await service.verify(cast(Any, Session(gets=[row])), row.id, context)
+    assert row.catalog_state == "empty"
 
 
 @pytest.mark.asyncio

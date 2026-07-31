@@ -85,8 +85,9 @@ DEFINITIONS: tuple[SettingDefinition, ...] = (
     SettingDefinition(
         "models",
         "conversation_model",
-        "Konverzační model",
-        "Ověřený model pro hlavní odpovědi asistentky.",
+        "Mozek rozhovoru",
+        "Rozumí obsahu rozhovoru a připravuje hlavní odpověď; nevytváří zvuk ani "
+        "nepřepisuje mikrofon.",
         "string",
         "",
         "next_turn",
@@ -94,8 +95,8 @@ DEFINITIONS: tuple[SettingDefinition, ...] = (
     SettingDefinition(
         "models",
         "transcription_model",
-        "Model přepisu",
-        "Ověřený model pro převod řeči na konečný text.",
+        "Sluch – převod řeči na text",
+        "Převádí zvuk z mikrofonu na napsanou větu; nerozhoduje, jak Dagmar odpoví.",
         "string",
         "",
         "new_voice_session",
@@ -103,8 +104,8 @@ DEFINITIONS: tuple[SettingDefinition, ...] = (
     SettingDefinition(
         "models",
         "speech_model",
-        "Model hlasové syntézy",
-        "Ověřený model pro hlasovou odpověď.",
+        "Řeč – převod textu na hlas",
+        "Vytváří zvuk z hotové textové odpovědi; barva hlasu se vybírá samostatně.",
         "string",
         "",
         "new_voice_session",
@@ -112,8 +113,8 @@ DEFINITIONS: tuple[SettingDefinition, ...] = (
     SettingDefinition(
         "models",
         "embedding_model",
-        "Model vyhledávací reprezentace",
-        "Ověřený model pro významové hledání.",
+        "Paměť – hledání souvisejících informací",
+        "Pomáhá hledat významově související informace; sám neodpovídá a neposlouchá mikrofon.",
         "string",
         "",
         "immediate",
@@ -121,8 +122,8 @@ DEFINITIONS: tuple[SettingDefinition, ...] = (
     SettingDefinition(
         "models",
         "summary_model",
-        "Model názvů a shrnutí",
-        "Ověřený model pro pravdivý název a shrnutí uzavřených rozhovorů.",
+        "Archivář – názvy a shrnutí",
+        "Po skončení rozhovoru vytvoří název a pravdivé stručné shrnutí.",
         "string",
         "",
         "next_turn",
@@ -130,8 +131,8 @@ DEFINITIONS: tuple[SettingDefinition, ...] = (
     SettingDefinition(
         "voice",
         "voice_id",
-        "Hlas asistentky",
-        "Identifikátor hlasu ověřeného poskytovatelem.",
+        "Barva hlasu Dagmar",
+        "Určuje, jak Dagmar zní. Není to AI model a nemění chytrost ani obsah odpovědi.",
         "string",
         "",
         "next_turn",

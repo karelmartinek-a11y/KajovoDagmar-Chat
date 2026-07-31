@@ -3,18 +3,28 @@ from __future__ import annotations
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from kajovodagmar.audit.service import AuditContext, AuditService
-from kajovodagmar.db.models import ApplicationSetting, ApplicationSettingRevision
+from kajovodagmar.db.models import (
+    ApplicationSetting,
+    ApplicationSettingRevision,
+    ModelCatalogEntry,
+    ProviderConfiguration,
+    SearchDocument,
+)
 from kajovodagmar.errors import ConflictError, DomainError, NotFoundError
 from kajovodagmar.settings.catalog import BY_KEY, DEFINITIONS, validate_value
 
 
 class SettingsService:
-    def __init__(self, audit: AuditService) -> None:
+    def __init__(
+        self, audit: AuditService, providers: Any | None = None, jobs: Any | None = None
+    ) -> None:
         self.audit = audit
+        self.providers = providers
+        self.jobs = jobs
 
     async def effective(self, session: AsyncSession) -> dict[str, dict[str, Any]]:
         rows = (await session.scalars(select(ApplicationSetting))).all()
@@ -45,12 +55,15 @@ class SettingsService:
     ) -> dict[str, Any]:
         outcomes: dict[str, Any] = {}
         for key, request in changes.items():
+            previous_value: Any = None
             definition = BY_KEY.get((area, key))
             if not definition:
                 raise DomainError(
                     "setting_unknown", f"Nastavení {area}.{key} není podporováno.", 422
                 )
             value = validate_value(definition, request.get("value"))
+            if area == "models" and value and self.providers is not None:
+                await self._validate_model_selection(session, key, str(value))
             expected = int(request.get("version", 0))
             row = await session.scalar(
                 select(ApplicationSetting)
@@ -73,6 +86,7 @@ class SettingsService:
                 )
                 session.add(row)
             else:
+                previous_value = row.value.get("value")
                 row.value = {"value": value}
                 row.version += 1
                 row.changed_by = account_id
@@ -101,7 +115,52 @@ class SettingsService:
                 target_id=row.id,
                 details={"area": area, "key": key, "version": row.version},
             )
+            if area == "models" and key == "embedding_model" and previous_value != value:
+                stale_documents = await session.scalar(
+                    select(func.count()).select_from(SearchDocument)
+                )
+                await session.execute(update(SearchDocument).values(stale=True))
+                if self.jobs is not None:
+                    await self.jobs.enqueue(
+                        session,
+                        "search_reindex_all",
+                        {"reason": "embedding_model_changed"},
+                        priority=50,
+                    )
+                await self.audit.append(
+                    session,
+                    context=context,
+                    event_type="memory.reindex_requested",
+                    result="success",
+                    details={
+                        "reason": "embedding_model_changed",
+                        "stale_documents": stale_documents or 0,
+                    },
+                )
         return outcomes
+
+    async def _validate_model_selection(
+        self, session: AsyncSession, role: str, model_value: str
+    ) -> None:
+        try:
+            from uuid import UUID
+
+            model_id = UUID(model_value)
+        except ValueError as exc:
+            raise DomainError("model_selection_invalid", "Vybraný model není platný.", 422) from exc
+        model = await session.get(ModelCatalogEntry, model_id)
+        if model is None or not model.available or model.role != role:
+            raise DomainError(
+                "model_selection_incompatible",
+                "Tento model není dostupný nebo není vhodný pro vybranou roli.",
+                422,
+                {"role": role},
+            )
+        provider = await session.get(ProviderConfiguration, model.provider_id)
+        if provider is None or provider.verification_state != "verified" or not provider.enabled:
+            raise DomainError(
+                "model_provider_unverified", "Model patří neověřenému poskytovateli.", 422
+            )
 
     async def history(
         self, session: AsyncSession, area: str, key: str

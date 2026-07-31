@@ -33,3 +33,8 @@ def test_audit_chain_detects_tampering() -> None:
 
     assert AuditService.verify_chain([]) == (True, None)
     assert AuditService.verify_chain([event]) == (False, 1)
+
+
+def test_audit_sanitization_limits_non_secret_details() -> None:
+    result = AuditService._sanitize({"diagnostic": "x" * 501})
+    assert len(result["diagnostic"]) == 500

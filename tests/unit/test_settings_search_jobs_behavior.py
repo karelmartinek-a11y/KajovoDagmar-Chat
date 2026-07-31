@@ -185,6 +185,68 @@ async def test_settings_effective_update_history_and_restore() -> None:
 
 
 @pytest.mark.asyncio
+async def test_model_selection_is_validated_and_embedding_change_marks_index_stale() -> (
+    None
+):
+    service = SettingsService(
+        cast(Any, SimpleNamespace(append=AsyncMock())),
+        providers=SimpleNamespace(),
+        jobs=None,
+    )
+    provider_id = uuid4()
+    provider = SimpleNamespace(
+        id=provider_id, enabled=True, verification_state="verified"
+    )
+    model_id = uuid4()
+    embedding = SimpleNamespace(
+        id=model_id,
+        provider_id=provider_id,
+        available=True,
+        role="embedding_model",
+    )
+    context = AuditContext("administrator", uuid4())
+    session = Session(
+        scalar_values=[None, 3],
+        get_values=[embedding, provider],
+        execute_rows=[[]],
+    )
+    result = await service.update_area(
+        cast(Any, session),
+        "models",
+        {"embedding_model": {"value": str(model_id), "version": 0}},
+        uuid4(),
+        context,
+    )
+    assert result["embedding_model"]["value"] == str(model_id)
+    assert session.execute_parameters == [None]
+
+
+@pytest.mark.asyncio
+async def test_model_selection_rejects_invalid_identifier_and_wrong_role() -> None:
+    service = SettingsService(
+        cast(Any, SimpleNamespace(append=AsyncMock())), providers=SimpleNamespace()
+    )
+    context = AuditContext("administrator", uuid4())
+    with pytest.raises(DomainError, match="není platný"):
+        await service.update_area(
+            cast(Any, Session()),
+            "models",
+            {"conversation_model": {"value": "not-a-uuid", "version": 0}},
+            uuid4(),
+            context,
+        )
+    model = SimpleNamespace(available=True, role="speech_model", provider_id=uuid4())
+    with pytest.raises(DomainError, match="není dostupný"):
+        await service.update_area(
+            cast(Any, Session(get_values=[model])),
+            "models",
+            {"conversation_model": {"value": str(uuid4()), "version": 0}},
+            uuid4(),
+            context,
+        )
+
+
+@pytest.mark.asyncio
 async def test_hybrid_search_text_semantic_and_embedding_guards() -> None:
     providers = SimpleNamespace(runtime=AsyncMock())
     search: Any = HybridSearchService(cast(Any, providers))
