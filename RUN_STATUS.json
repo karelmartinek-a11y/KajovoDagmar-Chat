@@ -1,8 +1,8 @@
 {
   "schema_version": "1.0",
   "product": "KájovoDagmar",
-  "status": "PASS",
-  "generated_at": "2026-07-30T00:30:00Z",
+  "status": "BLOCKER",
+  "generated_at": "2026-07-31T02:42:00Z",
   "ssot": {
     "revision": "v0021",
     "chapters": "0-20",
@@ -13,6 +13,8 @@
     "design": "PASS",
     "implementation": "PASS",
     "audit": "PASS",
+    "github_ci": "BLOCKER",
+    "production_deployment": "NOT_STARTED",
     "traceability_verified": 1000
   },
   "verification": {
@@ -59,5 +61,13 @@
     "web_package_lock": true
   },
   "production_deployed": false,
-  "blocker_count": 0
+  "github_ci": {
+    "run_id": 30503011395,
+    "attempt": 3,
+    "conclusion": "failure",
+    "runner_assigned": false,
+    "steps_started": 0,
+    "reason": "GitHub billing or Actions spending limit"
+  },
+  "blocker_count": 1
 }
