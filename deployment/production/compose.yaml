@@ -6,6 +6,7 @@ services:
     image: ${APP_IMAGE:?Exact application image is required}
     ports:
       - "127.0.0.1:${APP_LOOPBACK_PORT:?Loopback port is required}:8000"
+    networks: [app, edge]
     env_file:
       - path: ${PRODUCTION_ENV_FILE:?Production env file is required}
         required: true

@@ -17,6 +17,7 @@ def test_production_compose_is_isolated_on_loopback() -> None:
     assert parsed["services"]["web"]["ports"] == [
         "127.0.0.1:${APP_LOOPBACK_PORT:?Loopback port is required}:8000"
     ]
+    assert parsed["services"]["web"]["networks"] == ["app", "edge"]
     assert "ports" not in parsed["services"]["db"]
     assert parsed["volumes"]["backup_repository"]["driver_opts"]["device"].startswith(
         "${BACKUP_REPOSITORY_DIR"
