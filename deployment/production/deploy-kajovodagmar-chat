@@ -147,7 +147,13 @@ syft dir:"$release/backend" --exclude './.venv/**' \
 syft dir:"$release/web" --exclude './node_modules/**' --exclude './dist/**' \
   -o cyclonedx-json="$evidence/sbom-frontend-source.cdx.json"
 syft "$app_image" -o cyclonedx-json="$evidence/sbom-image.cdx.json"
-grype "$app_image" --vex "$release/security/vex.openvex.json" \
+vex_image=$(python -c \
+  'import json,sys; print(json.load(open(sys.argv[1]))["image"])' \
+  "$release/security/vex-policy.json")
+docker tag "$app_image" "$vex_image"
+test "$(docker image inspect "$app_image" --format '{{.Id}}')" = \
+  "$(docker image inspect "$vex_image" --format '{{.Id}}')"
+grype "$vex_image" --vex "$release/security/vex.openvex.json" \
   -o json >"$evidence/grype-image.json"
 docker run --rm \
   --user 0:0 \
