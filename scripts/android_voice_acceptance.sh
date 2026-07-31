@@ -52,11 +52,11 @@ if [[ -z "$browser_package" ]]; then
   exit 1
 fi
 printf '%s\n' "$browser_package" >"$evidence/browser-package.txt"
-adb -s "$device" shell am start -a android.intent.action.VIEW -d https://localhost:18443
+adb -s "$device" shell am start -a android.intent.action.VIEW -d https://localhost:18443 "$browser_package"
 sleep 5
 adb -s "$device" shell input keyevent KEYCODE_HOME
 sleep "${BACKGROUND_SECONDS:-10}"
-adb -s "$device" shell am start -a android.intent.action.VIEW -d https://localhost:18443
+adb -s "$device" shell am start -a android.intent.action.VIEW -d https://localhost:18443 "$browser_package"
 sleep 3
 adb -s "$device" shell input keyevent KEYCODE_POWER
 sleep 3
