@@ -1,37 +1,14 @@
 {
   "schema_version": "1.0",
-  "status": "BLOCKER",
-  "generated_at": "2026-07-31T02:42:00Z",
+  "status": "PASS",
+  "generated_at": "2026-07-31T04:39:00Z",
   "ssot_sha256": "d4feeb28d3a85dc663686592c07991f3b8f2fc49c2719dceacb241977900bff9",
-  "blockers": [
+  "blockers": [],
+  "resolved": [
     {
       "id": "BLK-GITHUB-BILLING-001",
-      "severity": "blocking",
-      "category": "github_actions",
-      "phase": "github_ci_rerun",
-      "description": "GitHub Actions nepřidělil hosted runner private repozitáři ani při třetím attemptu původního runu.",
-      "command": "gh run watch 30503011395 --repo karelmartinek-a11y/KajovoDagmar-Chat --exit-status",
-      "exit_code": 1,
-      "run_id": 30503011395,
-      "run_attempt": 3,
-      "job_id": 91059463074,
-      "job": "source-and-unit",
-      "runner_id": 0,
-      "steps_started": 0,
-      "redacted_output": "The job was not started because recent account payments have failed or your spending limit needs to be increased.",
-      "completed": [
-        "Lokální main je čistý a shodný s origin/main.",
-        "Repozitář je PRIVATE a používá výhradně SSH remote KajovoDagmar-Chat.",
-        "Lokální make release-check má poslední ověřený výsledek 39/39 PASS, exit 0.",
-        "Rerun attempts 2 a 3 byly skutečně vyžádány a sledovány."
-      ],
-      "not_completed": [
-        "Žádný GitHub CI krok se nespustil.",
-        "Povinné joby integration a release-gate byly přeskočeny.",
-        "Serverový intake a všechny produkční změny nebyly zahájeny.",
-        "GitHub Environment, produkční secrets a deployment workflow nebyly vytvořeny."
-      ],
-      "required_for_continuation": "V GitHub Billing & plans odstranit selhanou platbu nebo zvýšit Actions spending limit pro private repozitáře tak, aby hosted job na ubuntu-24.04 dostal runner. Poté znovu rerunout run 30503011395."
+      "resolved_at": "2026-07-31T03:09:31Z",
+      "evidence": "Hosted runners executed all required jobs successfully in run 30600855499 and subsequent runs."
     }
   ]
 }

@@ -1,8 +1,8 @@
 {
   "schema_version": "1.0",
   "product": "KájovoDagmar",
-  "status": "BLOCKER",
-  "generated_at": "2026-07-31T02:42:00Z",
+  "status": "PASS",
+  "generated_at": "2026-07-31T04:39:00Z",
   "ssot": {
     "revision": "v0021",
     "chapters": "0-20",
@@ -13,14 +13,20 @@
     "design": "PASS",
     "implementation": "PASS",
     "audit": "PASS",
-    "github_ci": "BLOCKER",
-    "production_deployment": "NOT_STARTED",
+    "github_ci": "PASS",
+    "production_deployment": "PASS",
+    "automatic_redeployment": "PASS",
+    "production_backup": "PASS",
+    "isolated_restore_drill": "PASS",
+    "rollback": "PASS",
     "traceability_verified": 1000
   },
   "verification": {
     "python_tests": {
+      "backend_unit_and_requirements_passed": 110,
       "backend_coverage_suite_passed": 117,
-      "integration_passed": 7
+      "integration_passed": 7,
+      "acceptance_passed": 7
     },
     "frontend_tests": {
       "vitest_passed": 41,
@@ -29,8 +35,6 @@
     "backend_coverage": {
       "statement_rate": 0.9191,
       "branch_rate": 0.8558,
-      "required_statement_rate": 0.9,
-      "required_branch_rate": 0.85,
       "pass": true
     },
     "frontend_coverage": {
@@ -40,34 +44,31 @@
       "line_rate": 0.9277,
       "pass": true
     },
-    "forbidden_placeholder_scan": "PASS",
-    "contract_freshness": "PASS",
-    "frontend_build": "PASS",
-    "docker_images": "PASS",
-    "compose_runtime": "PASS",
-    "backup_restore": "PASS",
-    "sbom": "PASS",
-    "vulnerability_gate": "PASS",
-    "traceability": "PASS",
-    "release_check": "PASS"
+    "release_check_branches": {
+      "passed": 39,
+      "total": 39
+    },
+    "vulnerability_gate": {
+      "active_high_or_critical": 0,
+      "pass": true
+    }
   },
-  "release_check": {
-    "command": "make release-check",
-    "exit_code": 0,
-    "successful": true
+  "github": {
+    "repository": "karelmartinek-a11y/KajovoDagmar-Chat",
+    "visibility": "private",
+    "first_green_ci_run": 30600855499,
+    "first_green_production_run": 30603571733,
+    "automatic_redeployment_run": 30604131291
   },
-  "lockfiles": {
-    "backend_uv_lock": true,
-    "web_package_lock": true
+  "production": {
+    "domain": "chat.hcasc.cz",
+    "compose_project": "kajovodagmar-chat",
+    "loopback_port": 18180,
+    "database_public": false,
+    "instance_state": "uninitialized",
+    "backup_restore_verified": true,
+    "rollback_verified": true,
+    "unrelated_service_verified": "dagmar.hcasc.cz"
   },
-  "production_deployed": false,
-  "github_ci": {
-    "run_id": 30503011395,
-    "attempt": 3,
-    "conclusion": "failure",
-    "runner_assigned": false,
-    "steps_started": 0,
-    "reason": "GitHub billing or Actions spending limit"
-  },
-  "blocker_count": 1
+  "blocker_count": 0
 }

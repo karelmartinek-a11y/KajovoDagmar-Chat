@@ -2,36 +2,35 @@
 
 ## Stav
 
-Repozitářová implementace a lokální release brána jsou **PASS**, ale celková etapa je **BLOCKER**. GitHub Actions run `30503011395` ani v attemptu 3 nedostal hosted runner kvůli aktivnímu billing/spending-limit omezení. Proto nebyla bezpečně otevřena produkční fáze.
+Repozitářová, CI a produkční etapa je **PASS**. Billing omezení původního runu
+`30503011395` bylo odstraněno; hosted run `30600855499` poprvé dokončil všechny
+tři povinné CI joby. Produkční run `30603571733` poté úspěšně nasadil izolovaný
+stack a následný automatický run `30604131291` ověřil další push i deployment
+přesného commitu.
 
-## Reprodukovatelné ověření
+## Ověřené provozní důkazy
 
-1. Připravit přesný toolchain uvedený v `GENERATION_MANIFEST.json`.
-2. Spustit `make release-check`.
-3. Ověřit, že všech 39 hodnot v `release/evidence/generated/release-check-results.json` je `pass`.
-4. Ověřit `release/RELEASE_MANIFEST.json`, čerstvé důkazy a čistý pracovní strom.
+- Lokální `make release-check` končí `0` a uzavírá 39 z 39 bran.
+- `source-and-unit`, `integration`, `release-gate` a `deploy-production`
+  skutečně běžely na GitHub hosted runnerech a skončily `success`.
+- `chat.hcasc.cz` používá platné TLS, HTTP přesměrování na HTTPS a samostatný
+  Nginx server block s loopback upstreamem `127.0.0.1:18180`.
+- PostgreSQL není publikovaný na hostiteli; Compose projekt, sítě, volumes,
+  uživatelé, klíče, logy a zálohy jsou oddělené.
+- Produkční diferenciální backup, pgBackRest check a izolovaný restore drill
+  prošly. Restore ověřil PostgreSQL 17.10, pgvector 0.8.6 a revizi v0021.
+- Rollback z automaticky nasazeného commitu na předchozí funkční release i
+  následný návrat dopředu prošly se zachováním databázového stavu a health.
+- `dagmar.hcasc.cz` zůstalo během intake, deploymentu, restore a rollbacku
+  funkční.
 
-## Přesný blocker
+## Administrátorský krok
 
-- Příkaz: `gh run watch 30503011395 --repo karelmartinek-a11y/KajovoDagmar-Chat --exit-status`
-- Návratový kód: `1`
-- Attempt: `3`
-- Job: `source-and-unit`, ID `91059463074`
-- Runner: nepřidělen (`runner_id: 0`)
-- Spuštěné kroky: `0`
-- GitHub annotation: `The job was not started because recent account payments have failed or your spending limit needs to be increased.`
+Aplikace je záměrně ve stavu `uninitialized`. Oprávněný administrátor může
+inicializační tajemství přečíst pouze přímo na serveru:
 
-Pro pokračování musí GitHub Billing & plans umožnit hosted Actions pro private repozitář. Poté je nutné znovu spustit původní run, prokázat úspěch všech tří jobů a teprve následně provést read-only serverový intake.
+```bash
+sudo cat /srv/hcasc/kajovodagmar-chat/shared/secrets/initialization-secret
+```
 
-## Stav důkazů
-
-- Lock soubory jsou uzamčené a frozen bootstrap prochází.
-- Backendová a frontendová coverage překračují nezměněné prahy.
-- PostgreSQL 17/pgvector integrace, Alembic, Compose, Playwright, backup a izolovaný restore procházejí.
-- Source/image SBOM, secret scan a vulnerability gate procházejí.
-- Matice dohledatelnosti uzavírá 1000 z 1000 požadavků konkrétní implementací, testem a čerstvým release důkazem.
-- Produkční server, DNS, Nginx, jiné služby, GitHub Environment a produkční secrets zůstaly beze změny.
-
-## Bezpečnost
-
-Do repozitáře nejsou vloženy produkční klíče, hesla, tokeny, runtime databáze, zálohy ani uživatelská data. Syntetické hodnoty jsou omezené na testovací a CI prostředí.
+Hodnota není v Git historii, GitHub secrets výpisu ani Actions logu.
