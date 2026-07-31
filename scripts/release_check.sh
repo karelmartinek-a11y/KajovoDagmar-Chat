@@ -14,6 +14,8 @@ RESULT="$ROOT/release/evidence/generated/release-check-results.json"
 rm -rf "$ROOT/release/evidence/generated"
 mkdir -p "$(dirname "$RESULT")"
 printf '{}\n' > "$RESULT"
+# Keep filesystem-dependent coverage deterministic; the frontend build recreates this ignored artifact later.
+rm -rf "$ROOT/web/dist"
 RECORD_PY=backend/.venv/bin/python
 if [ ! -x "$RECORD_PY" ]; then RECORD_PY=python3; fi
 record(){ "$RECORD_PY" scripts/write_check_result.py "$RESULT" "$1" "$2"; }

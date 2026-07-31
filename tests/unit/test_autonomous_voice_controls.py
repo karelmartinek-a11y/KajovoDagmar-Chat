@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from kajovodagmar.config import get_settings
@@ -8,6 +10,16 @@ from kajovodagmar.errors import CapabilityUnavailableError
 from kajovodagmar.providers.deterministic import DeterministicProvider
 from kajovodagmar.providers.contracts import ChatMessage, ChatRequest
 from kajovodagmar.providers.service import ProviderService
+from kajovodagmar.main import create_app
+
+
+def test_create_app_registers_frontend_route_when_static_artifact_exists(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "web" / "dist").mkdir(parents=True)
+    app = create_app()
+    assert any(getattr(route, "path", None) == "/{path:path}" for route in app.routes)
 
 
 @pytest.mark.asyncio
