@@ -9,6 +9,7 @@ regexTarget = "secret"
 regexes = [
   '''^0123456789abcdef$''',
   '''^synthetic-e2e-initialization-secret$''',
+  '''^87a559183b8458084db697d3e6f7e05da1b0e6e807ea2ee9f0cc6b94c650e126$''',
   '''^operations-verify-wrong-0001$''',
   '''^operations-verify-0001$''',
   '''^AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8$'''
