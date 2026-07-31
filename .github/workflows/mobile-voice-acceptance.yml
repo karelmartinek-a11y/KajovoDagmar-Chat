@@ -67,10 +67,13 @@ jobs:
           BACKGROUND_SECONDS: ${{ inputs.background_seconds || '10' }}
         with:
           api-level: 30
-          target: google_apis_playstore
+          target: playstore
           arch: x86
           profile: pixel_2
-          emulator-options: -no-window -no-audio -no-boot-anim -no-snapshot -no-metrics -gpu swiftshader_indirect
+          emulator-port: 5554
+          force-avd-creation: true
+          disable-linux-hw-accel: true
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none
           disable-animations: true
           script: |
             npm --prefix web run build
