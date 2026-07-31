@@ -65,8 +65,8 @@ jobs:
           export ANDROID_AVD_HOME="$HOME/.android/avd"
           mkdir -p "$ANDROID_AVD_HOME"
           yes | sdkmanager --licenses >/dev/null || true
-          yes | sdkmanager "platform-tools" "emulator" "platforms;android-30" "system-images;android-30;google_apis;x86"
-          printf 'no\n' | avdmanager create avd --name codex-api30 --package "system-images;android-30;google_apis;x86" --device pixel_2 --force
+          yes | sdkmanager "platform-tools" "emulator" "platforms;android-30" "system-images;android-30;google_apis_playstore;x86"
+          printf 'no\n' | avdmanager create avd --name codex-api30 --package "system-images;android-30;google_apis_playstore;x86" --device pixel_2 --force
           avdmanager list avd
           emulator -avd codex-api30 -no-window -no-audio -no-boot-anim -no-snapshot -no-metrics -accel off -gpu swiftshader_indirect > /tmp/codex-android-emulator.log 2>&1 &
           emulator_pid=$!
