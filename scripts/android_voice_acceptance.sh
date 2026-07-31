@@ -13,7 +13,18 @@ if [[ -z "$device" ]]; then
 fi
 
 adb -s "$device" reverse tcp:18443 tcp:18443
-adb -s "$device" shell pm path com.android.chrome >"$evidence/chrome-package.txt"
+browser_package=""
+for candidate in com.android.chrome com.google.android.apps.chrome com.android.browser; do
+  if adb -s "$device" shell pm path "$candidate" 2>/dev/null | grep -q '^package:'; then
+    browser_package="$candidate"
+    break
+  fi
+done
+if [[ -z "$browser_package" ]]; then
+  echo "No Android browser package is installed." >&2
+  exit 1
+fi
+printf '%s\n' "$browser_package" >"$evidence/browser-package.txt"
 adb -s "$device" shell am start -a android.intent.action.VIEW -d https://localhost:18443
 sleep 5
 adb -s "$device" shell input keyevent KEYCODE_HOME
