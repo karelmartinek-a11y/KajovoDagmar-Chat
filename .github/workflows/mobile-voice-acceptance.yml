@@ -76,7 +76,10 @@ jobs:
           force-avd-creation: true
           disable-linux-hw-accel: true
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none
-          disable-animations: true
+          # The hosted software-rendered emulator can drop the adb settings
+          # service immediately after boot. Animation settings are not part of
+          # the acceptance contract, so leave this optional runner step off.
+          disable-animations: false
           script: |
             npm --prefix web run build
             docker build --tag kajovodagmar:acceptance --file deployment/Dockerfile .
