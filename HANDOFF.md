@@ -2,11 +2,19 @@
 
 ## Stav
 
-Repozitářová, CI a produkční etapa je **PASS**. Billing omezení původního runu
-`30503011395` bylo odstraněno; hosted run `30600855499` poprvé dokončil všechny
-tři povinné CI joby. Produkční run `30603571733` poté úspěšně nasadil izolovaný
-stack a následný automatický run `30604131291` ověřil další push i deployment
-přesného commitu.
+Produkční stav je stabilní, ale celkový verdikt je **BLOCKER** kvůli jediné
+výslovné akceptační podmínce. Původní run `30503011395` ani při rerun attempt 4
+nedostal GitHub-hosted runner: job `source-and-unit` skončil před spuštěním
+jakéhokoliv kroku s billing/spending-limit anotací, integrační a release job byly
+přeskočeny. Příkaz
+`gh run watch 30503011395 --repo karelmartinek-a11y/KajovoDagmar-Chat --exit-status`
+skončil návratovým kódem `1`.
+
+Novější hosted runy přitom skutečně běžely. Run `30604831976` dokončil
+`source-and-unit`, `integration`, `release-gate` i `deploy-production` úspěšně
+a nasadil přesný commit `cb65f33a476ea7936ce036a2349fe7c45f409cd1`.
+Požadavek však dovoluje `PASS` pouze tehdy, když runner dostane i rerun původního
+runu, proto není tento platformní rozpor označen falešným PASS.
 
 ## Ověřené provozní důkazy
 
@@ -34,3 +42,11 @@ sudo cat /srv/hcasc/kajovodagmar-chat/shared/secrets/initialization-secret
 ```
 
 Hodnota není v Git historii, GitHub secrets výpisu ani Actions logu.
+
+## Potřebný externí krok
+
+GitHub Billing nebo GitHub Support musí odstranit billing gate, který nadále
+postihuje historický run soukromého repozitáře. Poté je nutné znovu spustit
+`30503011395` a ověřit, že `source-and-unit`, `integration` a `release-gate`
+skutečně dostaly runner a nebyly přeskočeny. Do té doby zůstává aktivní poslední
+ověřený produkční release; není nutný ani bezpečný žádný zásah do serveru.

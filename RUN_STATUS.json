@@ -1,8 +1,8 @@
 {
   "schema_version": "1.0",
   "product": "KájovoDagmar",
-  "status": "PASS",
-  "generated_at": "2026-07-31T04:39:00Z",
+  "status": "BLOCKER",
+  "generated_at": "2026-07-31T04:56:09Z",
   "ssot": {
     "revision": "v0021",
     "chapters": "0-20",
@@ -14,6 +14,7 @@
     "implementation": "PASS",
     "audit": "PASS",
     "github_ci": "PASS",
+    "original_run_rerun": "BLOCKER",
     "production_deployment": "PASS",
     "automatic_redeployment": "PASS",
     "production_backup": "PASS",
@@ -58,7 +59,15 @@
     "visibility": "private",
     "first_green_ci_run": 30600855499,
     "first_green_production_run": 30603571733,
-    "automatic_redeployment_run": 30604131291
+    "automatic_redeployment_run": 30604131291,
+    "last_green_ci_and_deployment_run": 30604831976,
+    "blocked_original_run": {
+      "run_id": 30503011395,
+      "attempt": 4,
+      "source_and_unit_job_id": 91076361522,
+      "steps_started": 0,
+      "conclusion": "failure"
+    }
   },
   "production": {
     "domain": "chat.hcasc.cz",
@@ -70,5 +79,5 @@
     "rollback_verified": true,
     "unrelated_service_verified": "dagmar.hcasc.cz"
   },
-  "blocker_count": 0
+  "blocker_count": 1
 }
