@@ -26,7 +26,8 @@ from kajovodagmar.realtime.protocol import (
 from kajovodagmar.realtime.tickets import consume_ticket
 from kajovodagmar.realtime.vad import VoiceActivityDetector
 
-RESUME_WINDOW_SECONDS = 30
+DEFAULT_RESUME_WINDOW_SECONDS = 15 * 60
+RESUME_WINDOW_SECONDS = DEFAULT_RESUME_WINDOW_SECONDS
 PARTIAL_TRANSCRIPT_INTERVAL_BYTES = PCM_SAMPLE_RATE * PCM_SAMPLE_BYTES
 FLOW_CONTROL_ACK_FRAMES = 10
 
@@ -50,6 +51,8 @@ class ConnectionState:
     turn_finalizing: bool = False
     vad: VoiceActivityDetector = field(default_factory=VoiceActivityDetector)
     expiration_task: asyncio.Task[None] | None = None
+    connected: bool = True
+    last_assistant_text: str | None = None
 
     def event(
         self, event_type: str, payload: dict[str, Any], ack_for: UUID | None = None
@@ -72,15 +75,26 @@ async def emit(
     payload: dict[str, Any],
     ack_for: UUID | None = None,
 ) -> None:
+    if not state.connected:
+        return
     async with state.send_lock:
         event = state.event(event_type, payload, ack_for)
-        await websocket.send_text(event.model_dump_json())
+        try:
+            await websocket.send_text(event.model_dump_json())
+        except (WebSocketDisconnect, RuntimeError, OSError):
+            state.connected = False
+            return
         REALTIME_EVENTS.labels("out", event_type, "sent").inc()
 
 
 async def send_audio(websocket: WebSocket, state: ConnectionState, data: bytes) -> None:
+    if not state.connected:
+        return
     async with state.send_lock:
-        await websocket.send_bytes(data)
+        try:
+            await websocket.send_bytes(data)
+        except (WebSocketDisconnect, RuntimeError, OSError):
+            state.connected = False
 
 
 @traced("realtime.session")
@@ -119,6 +133,7 @@ async def handle_realtime(websocket: WebSocket, app: Any) -> None:
                 state.send_lock = asyncio.Lock()
                 state.expiration_task = None
                 state.paused = True
+                state.connected = True
                 resume_available = True
             elif suspended is not None and suspended.conversation_id:
                 sessions[suspended.conversation_id] = suspended
@@ -309,6 +324,24 @@ async def handle_realtime(websocket: WebSocket, app: Any) -> None:
                     {"state": "listening"},
                     envelope.event_id,
                 )
+            elif envelope.type == "assistant.audio.retry":
+                if state.last_assistant_text:
+                    await replace_assistant_task(
+                        state,
+                        synthesize(websocket, app, state, state.last_assistant_text, "cs"),
+                    )
+                else:
+                    await emit(
+                        websocket,
+                        state,
+                        "assistant.audio.error",
+                        {
+                            "code": "audio_retry_unavailable",
+                            "message": "Hlasovou odpověď již nelze bezpečně zopakovat.",
+                            "text_available": True,
+                        },
+                        envelope.event_id,
+                    )
             elif envelope.type == "session.end":
                 await cancel_assistant_task(state)
                 if state.conversation_id:
@@ -331,7 +364,9 @@ async def handle_realtime(websocket: WebSocket, app: Any) -> None:
             else:
                 await emit(websocket, state, "ack", {}, envelope.event_id)
     except WebSocketDisconnect:
-        await cancel_assistant_task(state)
+        # Inference is server-owned. The socket is only an event subscriber;
+        # completed messages are already persisted by the conversation service.
+        state.connected = False
         await cancel_partial_task(state)
         if state.conversation_id:
             state.paused = True
@@ -484,7 +519,8 @@ async def finalize_audio_turn(
 
 async def expire_suspended_session(app: Any, state: ConnectionState) -> None:
     try:
-        await asyncio.sleep(RESUME_WINDOW_SECONDS)
+        timeout = float(getattr(app.state, "voice_resume_window_seconds", RESUME_WINDOW_SECONDS))
+        await asyncio.sleep(max(1.0, timeout))
         conversation_id = state.conversation_id
         sessions: dict[UUID, ConnectionState] = app.state.realtime_sessions
         if not conversation_id or sessions.get(conversation_id) is not state:
@@ -645,6 +681,7 @@ async def process_text_turn(
             },
             ack_for,
         )
+        state.last_assistant_text = result.message.content
         await synthesize(websocket, app, state, result.message.content, "cs")
     except asyncio.CancelledError:
         await emit(websocket, state, "assistant.interrupted", {"state": "listening"}, ack_for)
@@ -693,12 +730,16 @@ async def synthesize(
                 if chunk.pcm16_24000_mono:
                     await send_audio(websocket, state, chunk.pcm16_24000_mono)
             await emit(websocket, state, "assistant.audio.end", {"completed": True})
-    except DomainError as exc:
+    except (DomainError, TimeoutError) as exc:
+        code = "provider_timeout" if isinstance(exc, TimeoutError) else exc.code
+        message = (
+            "Externí služba neodpověděla včas." if isinstance(exc, TimeoutError) else exc.message
+        )
         await emit(
             websocket,
             state,
             "assistant.audio.error",
-            {"code": exc.code, "message": exc.message, "text_available": True},
+            {"code": code, "message": message, "text_available": True},
         )
 
 

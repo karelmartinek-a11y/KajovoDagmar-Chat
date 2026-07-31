@@ -1,5 +1,16 @@
 import { api } from '../api/client';
-import { transition, type VoiceState } from './voiceState';
+import {
+  transition,
+  type AudioContextState,
+  type BackgroundState,
+  type CaptureState,
+  type ConnectionState,
+  type DeviceState,
+  type PermissionState,
+  type TrackState,
+  type TurnState,
+  type VoiceState,
+} from './voiceState';
 
 export type TranscriptItem = {
   id: string;
@@ -25,8 +36,41 @@ export type VoiceSnapshot = {
   partialTranscript: string;
   error: string | null;
   microphoneActive: boolean;
+  permissionState: PermissionState;
+  deviceState: DeviceState;
+  trackState: TrackState;
+  captureState: CaptureState;
+  audioContextState: AudioContextState;
+  connectionState: ConnectionState;
+  turnState: TurnState;
+  backgroundState: BackgroundState;
+  wakeLockState: 'unsupported' | 'released' | 'acquired' | 'blocked';
+  lastAudioFrameAt: number | null;
+  audioRetryAvailable: boolean;
   conversationId: string | null;
   actions: ActionProposal[];
+};
+
+export const emptyVoiceSnapshot: VoiceSnapshot = {
+  state: 'ready',
+  stateMessage: 'Připraveno',
+  transcript: [],
+  partialTranscript: '',
+  error: null,
+  microphoneActive: false,
+  permissionState: 'unknown',
+  deviceState: 'unknown',
+  trackState: 'unavailable',
+  captureState: 'idle',
+  audioContextState: 'unknown',
+  connectionState: 'disconnected',
+  turnState: 'idle',
+  backgroundState: 'foreground',
+  wakeLockState: 'unsupported',
+  lastAudioFrameAt: null,
+  audioRetryAvailable: false,
+  conversationId: null,
+  actions: [],
 };
 
 type ServerEvent = {
@@ -64,20 +108,15 @@ export class VoiceClient {
   private reconnectAttempts = 0;
   private reconnectTimer: number | null = null;
   private ending = false;
+  private lifecycleBound = false;
+  private wakeLock: WakeLockSentinel | null = null;
+  private lastAudioFrameAt = 0;
   private language = 'cs';
   private listeners = new Set<Listener>();
   private playbackQueue: AudioBuffer[] = [];
+  private lastAssistantText: string | null = null;
   private playingSource: AudioBufferSourceNode | null = null;
-  private snapshot: VoiceSnapshot = {
-    state: 'ready',
-    stateMessage: 'Připraveno',
-    transcript: [],
-    partialTranscript: '',
-    error: null,
-    microphoneActive: false,
-    conversationId: null,
-    actions: [],
-  };
+  private snapshot: VoiceSnapshot = { ...emptyVoiceSnapshot };
 
   subscribe(listener: Listener): () => void {
     this.listeners.add(listener);
@@ -88,6 +127,129 @@ export class VoiceClient {
   private update(patch: Partial<VoiceSnapshot>): void {
     this.snapshot = { ...this.snapshot, ...patch };
     this.listeners.forEach((listener) => listener(this.snapshot));
+  }
+
+  private setMicrophoneState(patch: Partial<VoiceSnapshot> = {}): void {
+    const track = this.mediaStream?.getAudioTracks()[0];
+    const contextRunning = this.audioContext?.state === 'running';
+    const recentFrame =
+      this.lastAudioFrameAt > 0 && performance.now() - this.lastAudioFrameAt < 1500;
+    const captureState = patch.captureState ?? this.snapshot.captureState;
+    const actuallyReceiving = Boolean(
+      track &&
+        track.readyState === 'live' &&
+        track.enabled &&
+        !track.muted &&
+        contextRunning &&
+        recentFrame &&
+        captureState === 'capturing',
+    );
+    this.update({ microphoneActive: actuallyReceiving, ...patch });
+  }
+
+  private publishTrackState(track: MediaStreamTrack): void {
+    const trackState: TrackState =
+      track.readyState === 'ended'
+        ? 'ended'
+        : !track.enabled
+          ? 'disabled_by_app'
+          : track.muted
+            ? 'muted_by_system'
+            : 'live';
+    this.setMicrophoneState({
+      trackState,
+      deviceState: trackState === 'ended' ? 'changed' : 'available',
+      captureState: trackState === 'live' ? this.snapshot.captureState : 'temporarily_suspended',
+      audioRetryAvailable: trackState !== 'live',
+    });
+  }
+
+  private bindTrack(track: MediaStreamTrack): void {
+    if (typeof track.addEventListener === 'function')
+      ['mute', 'unmute', 'ended'].forEach((event) => {
+        track.addEventListener(event, () => this.publishTrackState(track));
+      });
+    this.publishTrackState(track);
+  }
+
+  private bindLifecycle(): void {
+    if (this.lifecycleBound) return;
+    this.lifecycleBound = true;
+    const restore = () => void this.restoreAfterVisibility();
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) {
+        this.update({ backgroundState: 'hidden' });
+      } else {
+        this.update({ backgroundState: 'restoring' });
+        restore();
+      }
+    });
+    window.addEventListener('focus', restore);
+    window.addEventListener('online', () => {
+      this.update({ connectionState: 'connecting' });
+      if (this.snapshot.conversationId && this.socket?.readyState !== WebSocket.OPEN)
+        this.scheduleReconnect();
+    });
+    window.addEventListener('offline', () => this.update({ connectionState: 'offline' }));
+    window.addEventListener('pageshow', restore);
+    window.addEventListener('pagehide', () => this.update({ backgroundState: 'hidden' }));
+    document.addEventListener('freeze', () => this.update({ backgroundState: 'frozen' }));
+    document.addEventListener('resume', restore);
+    navigator.mediaDevices?.addEventListener?.('devicechange', () => {
+      this.update({ deviceState: 'changed' });
+    });
+  }
+
+  private async restoreAfterVisibility(): Promise<void> {
+    if (this.ending) return;
+    this.update({ backgroundState: 'restoring' });
+    if (this.audioContext && this.audioContext.state !== 'running') await this.resumeAudioContext();
+    if (this.snapshot.conversationId && this.socket?.readyState !== WebSocket.OPEN)
+      this.scheduleReconnect();
+    const track = this.mediaStream?.getAudioTracks()[0];
+    if (track) this.publishTrackState(track);
+    await this.acquireWakeLock();
+    this.update({ backgroundState: document.hidden ? 'hidden' : 'foreground' });
+  }
+
+  private async resumeAudioContext(): Promise<void> {
+    if (!this.audioContext) return;
+    try {
+      await this.audioContext.resume();
+      const state = this.audioContext.state as AudioContextState;
+      this.update({ audioContextState: state });
+      if (state !== 'running') this.update({ audioRetryAvailable: true });
+      this.setMicrophoneState();
+    } catch {
+      this.update({
+        audioContextState: 'interrupted',
+        audioRetryAvailable: true,
+        microphoneActive: false,
+      });
+    }
+  }
+
+  private async acquireWakeLock(): Promise<void> {
+    if (!('wakeLock' in navigator) || document.hidden || !this.snapshot.conversationId) {
+      if (!('wakeLock' in navigator)) this.update({ wakeLockState: 'unsupported' });
+      return;
+    }
+    try {
+      this.wakeLock = await navigator.wakeLock.request('screen');
+      this.update({ wakeLockState: 'acquired' });
+      this.wakeLock.addEventListener('release', () => {
+        this.wakeLock = null;
+        this.update({ wakeLockState: 'released' });
+      });
+    } catch {
+      this.update({ wakeLockState: 'blocked' });
+    }
+  }
+
+  private async releaseWakeLock(): Promise<void> {
+    await this.wakeLock?.release().catch(() => undefined);
+    this.wakeLock = null;
+    this.update({ wakeLockState: 'released' });
   }
 
   private move(next: VoiceState, message: string): void {
@@ -102,63 +264,105 @@ export class VoiceClient {
   }
 
   async start(language = 'cs', continuationOfId?: string): Promise<void> {
-    if (!window.isSecureContext && location.hostname !== 'localhost')
-      throw new Error('Mikrofon vyžaduje zabezpečené HTTPS připojení.');
-    this.update({ error: null });
-    this.move('connecting', 'Připojuji hlasovou komunikaci');
-    this.ending = false;
-    this.language = language;
-    this.mediaStream = await navigator.mediaDevices.getUserMedia({
-      audio: {
-        echoCancellation: true,
-        noiseSuppression: true,
-        autoGainControl: true,
-        channelCount: 1,
-      },
-      video: false,
-    });
-    this.audioContext = new AudioContext({ latencyHint: 'interactive' });
-    await this.audioContext.audioWorklet.addModule(
-      new URL('./recorder.worklet.js', import.meta.url),
-    );
-    this.source = this.audioContext.createMediaStreamSource(this.mediaStream);
-    this.recorder = new AudioWorkletNode(this.audioContext, 'kajovodagmar-recorder', {
-      numberOfInputs: 1,
-      numberOfOutputs: 0,
-    });
-    this.recorder.port.onmessage = (event: MessageEvent<ArrayBuffer>) => {
-      if (this.socket?.readyState !== WebSocket.OPEN || this.snapshot.state !== 'listening') return;
-      const buffered = this.socket.bufferedAmount ?? 0;
-      if (buffered >= AUDIO_HARD_BACKPRESSURE_BYTES) {
-        this.mediaStream?.getAudioTracks().forEach((track) => {
-          track.enabled = false;
+    try {
+      if (!window.isSecureContext && location.hostname !== 'localhost')
+        throw new Error('Mikrofon vyžaduje zabezpečené HTTPS připojení.');
+      if (!navigator.mediaDevices?.getUserMedia)
+        throw new Error('Tento prohlížeč nepodporuje mikrofon.');
+      this.update({ error: null, captureState: 'requesting', permissionState: 'prompt' });
+      this.move('connecting', 'Připojuji hlasovou komunikaci');
+      this.ending = false;
+      this.language = language;
+      this.mediaStream ??= await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+          channelCount: 1,
+        },
+        video: false,
+      });
+      const track = this.mediaStream.getAudioTracks()[0];
+      if (!track) throw new Error('Mikrofon nebyl nalezen.');
+      this.update({ permissionState: 'granted', deviceState: 'available', trackState: 'live' });
+      this.bindTrack(track);
+      this.audioContext ??= new AudioContext({ latencyHint: 'interactive' });
+      this.update({ audioContextState: this.audioContext.state });
+      this.audioContext.onstatechange = () => {
+        this.update({ audioContextState: this.audioContext?.state as AudioContextState });
+        this.setMicrophoneState();
+      };
+      await this.audioContext.audioWorklet.addModule(
+        new URL('./recorder.worklet.js', import.meta.url),
+      );
+      this.source = this.audioContext.createMediaStreamSource(this.mediaStream);
+      this.recorder = new AudioWorkletNode(this.audioContext, 'kajovodagmar-recorder', {
+        numberOfInputs: 1,
+        numberOfOutputs: 0,
+      });
+      this.recorder.port.onmessage = (event: MessageEvent<ArrayBuffer>) => {
+        if (this.socket?.readyState !== WebSocket.OPEN || this.snapshot.state !== 'listening')
+          return;
+        const buffered = this.socket.bufferedAmount ?? 0;
+        if (buffered >= AUDIO_HARD_BACKPRESSURE_BYTES) {
+          this.mediaStream?.getAudioTracks().forEach((track) => {
+            track.enabled = false;
+          });
+          this.move('paused', 'Mikrofon byl bezpečně pozastaven kvůli pomalému spojení');
+          this.update({ microphoneActive: false });
+          return;
+        }
+        if (buffered >= AUDIO_SOFT_BACKPRESSURE_BYTES)
+          this.update({ stateMessage: 'Spojení je pomalé, čekám na potvrzení zvuku' });
+        const pcm = event.data;
+        if (pcm.byteLength !== AUDIO_FRAME_BYTES) {
+          this.fail('Mikrofon vytvořil neplatný zvukový rámec.');
+          return;
+        }
+        this.frameSequence += 1;
+        this.lastAudioFrameAt = performance.now();
+        this.setMicrophoneState({
+          lastAudioFrameAt: this.lastAudioFrameAt,
+          captureState: 'capturing',
         });
-        this.move('paused', 'Mikrofon byl bezpečně pozastaven kvůli pomalému spojení');
-        this.update({ microphoneActive: false });
-        return;
-      }
-      if (buffered >= AUDIO_SOFT_BACKPRESSURE_BYTES)
-        this.update({ stateMessage: 'Spojení je pomalé, čekám na potvrzení zvuku' });
-      const pcm = event.data;
-      if (pcm.byteLength !== AUDIO_FRAME_BYTES) {
-        this.fail('Mikrofon vytvořil neplatný zvukový rámec.');
-        return;
-      }
-      this.frameSequence += 1;
-      const packet = new ArrayBuffer(AUDIO_PACKET_BYTES);
-      const header = new DataView(packet);
-      header.setUint8(0, 0x4b);
-      header.setUint8(1, 0x44);
-      header.setUint8(2, 0x56);
-      header.setUint8(3, 0x31);
-      header.setUint32(4, this.frameSequence);
-      header.setFloat64(8, performance.now());
-      new Uint8Array(packet, 16).set(new Uint8Array(pcm));
-      this.socket.send(packet);
-    };
-    this.source.connect(this.recorder);
-    await this.connectSocket(false, continuationOfId);
-    await this.waitForConversation();
+        const packet = new ArrayBuffer(AUDIO_PACKET_BYTES);
+        const header = new DataView(packet);
+        header.setUint8(0, 0x4b);
+        header.setUint8(1, 0x44);
+        header.setUint8(2, 0x56);
+        header.setUint8(3, 0x31);
+        header.setUint32(4, this.frameSequence);
+        header.setFloat64(8, performance.now());
+        new Uint8Array(packet, 16).set(new Uint8Array(pcm));
+        this.socket.send(packet);
+      };
+      this.source.connect(this.recorder);
+      this.bindLifecycle();
+      await this.acquireWakeLock();
+      await this.connectSocket(false, continuationOfId);
+      await this.waitForConversation();
+    } catch (error) {
+      const name = error instanceof DOMException ? error.name : '';
+      const message =
+        name === 'NotAllowedError' || name === 'SecurityError'
+          ? 'Povolte mikrofon v nastavení prohlížeče.'
+          : name === 'NotFoundError'
+            ? 'Mikrofon nebyl nalezen.'
+            : name === 'NotReadableError' || name === 'AbortError'
+              ? 'Mikrofon je právě používán jinou aplikací.'
+              : name === 'OverconstrainedError'
+                ? 'Nastavení mikrofonu není v tomto zařízení dostupné.'
+                : error instanceof Error
+                  ? error.message
+                  : 'Mikrofon se nepodařilo připravit.';
+      this.update({
+        error: message,
+        captureState: 'failed',
+        permissionState: name === 'NotAllowedError' ? 'denied' : this.snapshot.permissionState,
+        microphoneActive: false,
+      });
+      this.move('error', 'Vyžaduje pozornost');
+    }
   }
 
   private async connectSocket(resume: boolean, continuationOfId?: string): Promise<void> {
@@ -188,7 +392,11 @@ export class VoiceClient {
         this.move('reconnecting', 'Spojení bylo přerušeno, obnovuji relaci');
         this.scheduleReconnect();
       }
-      this.update({ microphoneActive: false });
+      this.update({
+        microphoneActive: false,
+        connectionState: 'reconnecting',
+        captureState: 'temporarily_suspended',
+      });
     };
     socket.onerror = () => this.fail('Hlasové spojení se nepodařilo navázat.');
     await new Promise<void>((resolve, reject) => {
@@ -201,6 +409,7 @@ export class VoiceClient {
         resolve();
       };
     });
+    this.update({ connectionState: 'connected' });
     if (resume) {
       this.sequence += 1;
       socket.send(
@@ -264,17 +473,18 @@ export class VoiceClient {
       track.enabled = false;
     });
     this.move('paused', 'Mikrofon je pozastaven');
-    this.update({ microphoneActive: false });
+    this.setMicrophoneState({ captureState: 'paused_by_user', microphoneActive: false });
   }
 
   async resume(): Promise<void> {
-    if (this.snapshot.state !== 'paused') return;
+    if (!this.snapshot.conversationId) return;
     this.mediaStream?.getAudioTracks().forEach((track) => {
       track.enabled = true;
     });
-    this.send('microphone.resume', {});
-    this.move('listening', 'Naslouchám');
-    this.update({ microphoneActive: true });
+    if (this.socket?.readyState === WebSocket.OPEN) this.send('microphone.resume', {});
+    await this.resumeAudioContext();
+    this.move('listening', 'Mikrofon se obnovuje');
+    this.setMicrophoneState({ captureState: 'recovering', audioRetryAvailable: false });
   }
 
   finishTurn(): void {
@@ -337,6 +547,12 @@ export class VoiceClient {
     this.move('listening', 'Naslouchám');
   }
 
+  retrySpeech(): void {
+    if (this.socket?.readyState !== WebSocket.OPEN || !this.lastAssistantText) return;
+    this.send('assistant.audio.retry', {});
+    this.update({ error: null, audioRetryAvailable: false });
+  }
+
   async end(): Promise<void> {
     this.ending = true;
     if (this.reconnectTimer !== null) window.clearTimeout(this.reconnectTimer);
@@ -350,9 +566,19 @@ export class VoiceClient {
     this.socket?.close(1000, 'user_ended');
     this.socket = null;
     this.audioContext = null;
+    await this.releaseWakeLock();
     this.mediaStream = null;
     this.move('ended', 'Rozhovor byl ukončen');
-    this.update({ error: null, microphoneActive: false, conversationId: null, actions: [] });
+    this.update({
+      error: null,
+      microphoneActive: false,
+      conversationId: null,
+      actions: [],
+      captureState: 'idle',
+      trackState: 'unavailable',
+      connectionState: 'disconnected',
+      turnState: 'idle',
+    });
   }
 
   private send(type: string, payload: Record<string, unknown>): void {
@@ -391,8 +617,14 @@ export class VoiceClient {
         break;
       case 'session.started':
         this.reconnectAttempts = 0;
-        this.update({ conversationId: message.conversation_id ?? null, microphoneActive: true });
+        this.update({
+          conversationId: message.conversation_id ?? null,
+          turnState: 'listening',
+          captureState: 'recovering',
+        });
         this.move('listening', 'Naslouchám');
+        this.setMicrophoneState();
+        void this.acquireWakeLock();
         break;
       case 'session.resumed':
         this.reconnectAttempts = 0;
@@ -405,7 +637,8 @@ export class VoiceClient {
             typeof message.payload.partial_transcript === 'string'
               ? message.payload.partial_transcript
               : '',
-          microphoneActive: true,
+          captureState: 'recovering',
+          audioRetryAvailable: false,
         });
         this.move(
           'listening',
@@ -428,7 +661,16 @@ export class VoiceClient {
           ended: 'Rozhovor byl ukončen',
         };
         this.move(next, labels[next]);
-        this.update({ microphoneActive: next === 'listening' });
+        const turnState: TurnState =
+          next === 'processing'
+            ? 'thinking'
+            : next === 'responding'
+              ? 'speaking'
+              : next === 'listening'
+                ? 'listening'
+                : 'idle';
+        this.update({ turnState });
+        this.setMicrophoneState();
         break;
       }
       case 'transcript.partial':
@@ -447,6 +689,7 @@ export class VoiceClient {
         const payloadMessageId = message.payload.message_id;
         const messageId =
           typeof payloadMessageId === 'string' ? payloadMessageId : String(message.event_id);
+        this.lastAssistantText = text;
         const actions = Array.isArray(message.payload.actions)
           ? (message.payload.actions as ActionProposal[])
           : [];
@@ -466,10 +709,19 @@ export class VoiceClient {
           ],
         });
         this.move('responding', 'Odpovídám');
+        this.update({ turnState: 'speaking' });
         break;
       }
       case 'assistant.audio.end':
         this.move('listening', 'Naslouchám');
+        this.setMicrophoneState({ turnState: 'listening' });
+        break;
+      case 'assistant.audio.error':
+        this.update({
+          error: 'Textová odpověď je hotová, ale hlas se nepodařilo vytvořit.',
+          audioRetryAvailable: true,
+        });
+        this.move('listening', 'Textová odpověď je hotová');
         break;
       case 'assistant.interrupted':
         this.move('listening', 'Naslouchám');
@@ -512,6 +764,13 @@ export class VoiceClient {
 
   private async enqueuePcm(data: ArrayBuffer): Promise<void> {
     if (!this.audioContext || data.byteLength === 0) return;
+    if (this.audioContext.state !== 'running') {
+      this.update({
+        audioRetryAvailable: true,
+        error: 'Přehrávání vyžaduje klepnutí pro obnovení zvuku.',
+      });
+      return;
+    }
     const samples = new Int16Array(data);
     const buffer = this.audioContext.createBuffer(1, samples.length, 24000);
     const target = buffer.getChannelData(0);
@@ -551,7 +810,7 @@ export class VoiceClient {
   }
 
   private fail(message: string): void {
-    this.update({ error: message, microphoneActive: false });
+    this.update({ error: message, microphoneActive: false, captureState: 'failed' });
     this.move('error', 'Vyžaduje pozornost');
   }
 }

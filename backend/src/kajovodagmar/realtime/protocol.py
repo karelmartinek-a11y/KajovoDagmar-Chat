@@ -32,6 +32,7 @@ class ClientEnvelope(BaseModel):
         "turn.audio_end",
         "turn.text",
         "assistant.interrupt",
+        "assistant.audio.retry",
         "session.end",
         "ack",
         "ping",

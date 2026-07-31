@@ -382,6 +382,38 @@ def test_provider_response_validation_branches() -> None:
         OpenAICompatibleProvider._raise(response(429), "chat")
     with pytest.raises(DomainError, match="technickou"):
         OpenAICompatibleProvider._raise(response(500), "chat")
+    invalid = httpx.Response(
+        400,
+        json={
+            "error": {
+                "type": "invalid_request_error",
+                "code": "invalid_parameter",
+                "param": "temperature",
+            }
+        },
+        headers={"x-request-id": "req-safe-1"},
+        request=httpx.Request("POST", "https://provider.invalid/v1/responses"),
+    )
+    with pytest.raises(DomainError) as invalid_error:
+        OpenAICompatibleProvider._raise(invalid, "conversation_model")
+    assert invalid_error.value.code == "provider_invalid_parameter"
+    assert invalid_error.value.details == {
+        "status": 400,
+        "capability": "conversation_model",
+        "endpoint": "/v1/responses",
+        "provider_request_id": "req-safe-1",
+        "provider_error_type": "invalid_request_error",
+        "provider_error_code": "invalid_parameter",
+        "provider_param": "temperature",
+    }
+    for status in (402, 409):
+        with pytest.raises(DomainError, match="kredit"):
+            OpenAICompatibleProvider._raise(
+                httpx.Response(
+                    status, request=httpx.Request("POST", "https://provider.invalid")
+                ),
+                "speech_synthesis",
+            )
     assert OpenAICompatibleProvider._response_text({"output_text": "text"}) == "text"
     assert (
         OpenAICompatibleProvider._response_text(

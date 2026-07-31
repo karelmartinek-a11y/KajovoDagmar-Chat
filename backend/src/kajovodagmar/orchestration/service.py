@@ -434,6 +434,7 @@ class OrchestrationService:
             response_schema=ModelDecision.model_json_schema(),
             temperature=temperature,
             timeout_seconds=45.0,
+            capabilities=frozenset(model_row.capabilities or {}),
         )
         started = perf_counter()
         try:

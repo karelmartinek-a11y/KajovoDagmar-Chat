@@ -63,6 +63,17 @@ const baseSnapshot: VoiceSnapshot = {
   partialTranscript: '',
   error: null,
   microphoneActive: false,
+  permissionState: 'unknown',
+  deviceState: 'unknown',
+  trackState: 'unavailable',
+  captureState: 'idle',
+  audioContextState: 'unknown',
+  connectionState: 'disconnected',
+  turnState: 'idle',
+  backgroundState: 'foreground',
+  wakeLockState: 'unsupported',
+  lastAudioFrameAt: null,
+  audioRetryAvailable: false,
   conversationId: null,
   actions: [],
 };
@@ -142,7 +153,7 @@ describe('chat screen behavior', () => {
     act(() =>
       emit({ state: 'paused', stateMessage: 'Pozastaveno', conversationId: 'conversation-1' }),
     );
-    fireEvent.click(screen.getByRole('button', { name: 'Obnovit naslouchání' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Obnovit mikrofon' }));
     act(() =>
       emit({ state: 'responding', stateMessage: 'Odpovídám', conversationId: 'conversation-1' }),
     );

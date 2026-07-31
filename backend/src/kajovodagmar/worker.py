@@ -262,6 +262,7 @@ class Worker:
             response_schema=SummaryDecision.model_json_schema(),
             temperature=0.0,
             timeout_seconds=45.0,
+            capabilities=frozenset(getattr(model, "capabilities", None) or {}),
         )
         result = await runtime.chat(request)
         decision = SummaryDecision.model_validate(result.structured)

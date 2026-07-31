@@ -7,6 +7,10 @@ import { VoiceClient, type VoiceSnapshot } from './audio/VoiceClient';
 
 class FakeTrack {
   enabled = true;
+  muted = false;
+  readyState = 'live';
+  events = new Map<string, () => void>();
+  addEventListener = vi.fn((name: string, handler: () => void) => this.events.set(name, handler));
   stop = vi.fn();
 }
 class FakePort {
@@ -40,6 +44,8 @@ class FakeGain {
   connect = vi.fn();
 }
 class FakeAudioContext {
+  state = 'running';
+  onstatechange: (() => void) | null = null;
   destination = {};
   audioWorklet = { addModule: vi.fn().mockResolvedValue(undefined) };
   createMediaStreamSource = vi.fn(() => new FakeSource());
@@ -49,6 +55,7 @@ class FakeAudioContext {
   });
   createBufferSource = vi.fn(() => new FakeBufferSource() as unknown as AudioBufferSourceNode);
   createGain = vi.fn(() => new FakeGain() as unknown as GainNode);
+  resume = vi.fn().mockResolvedValue(undefined);
   close = vi.fn().mockResolvedValue(undefined);
 }
 class FakeWebSocket {
@@ -151,7 +158,7 @@ describe('VoiceClient', () => {
     expect(latest(client)).toMatchObject({
       state: 'listening',
       conversationId: 'conversation-1',
-      microphoneActive: true,
+      microphoneActive: false,
     });
     await client.pause();
     expect(latest(client).state).toBe('paused');
@@ -177,6 +184,7 @@ describe('VoiceClient', () => {
     const socket = Reflect.get(client, 'socket') as FakeWebSocket;
     const recorder = Reflect.get(client, 'recorder') as FakeWorkletNode;
     recorder.port.onmessage?.(new MessageEvent('message', { data: new ArrayBuffer(960) }));
+    expect(latest(client).microphoneActive).toBe(true);
     const packet = socket.sent.at(-1);
     expect(packet).toBeInstanceOf(ArrayBuffer);
     const header = new DataView(packet as ArrayBuffer);
@@ -276,7 +284,7 @@ describe('VoiceClient', () => {
     });
     expect(latest(client)).toMatchObject({
       state: 'listening',
-      microphoneActive: true,
+      microphoneActive: false,
       partialTranscript: 'poslední potvrzená hypotéza',
     });
     expect(stream.track.enabled).toBe(true);
@@ -288,6 +296,131 @@ describe('VoiceClient', () => {
     expect(latest(client).stateMessage).toBe('Zopakujte větu.');
     await deliver(client, 6, 'turn.incomplete');
     expect(latest(client).stateMessage).toContain('zopakujte');
+  });
+
+  it('keeps text when speech synthesis fails and exposes an audio retry state', async () => {
+    const client = new VoiceClient();
+    await deliver(client, 1, 'assistant.text', { text: 'Text hotový', message_id: 'assistant-1' });
+    await deliver(client, 2, 'assistant.audio.error', {
+      code: 'provider_error',
+      text_available: true,
+    });
+    expect(latest(client).transcript.at(-1)?.text).toBe('Text hotový');
+    expect(latest(client).audioRetryAvailable).toBe(true);
+    expect(latest(client).error).toContain('Textová odpověď');
+  });
+
+  it('handles audio and page lifecycle without claiming a live microphone', async () => {
+    apiMock.mockResolvedValueOnce({ ticket: 'ticket', websocket_path: '/api/v1/realtime' });
+    const client = new VoiceClient();
+    await client.start('cs');
+    const stream = Reflect.get(client, 'mediaStream') as FakeMediaStream;
+    const context = Reflect.get(client, 'audioContext') as FakeAudioContext;
+    stream.track.muted = true;
+    stream.track.events.get('mute')?.();
+    expect(latest(client).microphoneActive).toBe(false);
+    stream.track.muted = false;
+    stream.track.events.get('unmute')?.();
+    context.state = 'suspended';
+    context.onstatechange?.();
+    window.dispatchEvent(new Event('offline'));
+    expect(latest(client).connectionState).toBe('offline');
+    document.dispatchEvent(new Event('visibilitychange'));
+    await client.end();
+  });
+
+  it('publishes actionable microphone errors and wake-lock outcomes', async () => {
+    for (const name of [
+      'NotAllowedError',
+      'NotFoundError',
+      'NotReadableError',
+      'OverconstrainedError',
+    ]) {
+      Object.defineProperty(navigator, 'mediaDevices', {
+        value: { getUserMedia: vi.fn().mockRejectedValue(new DOMException(name, name)) },
+        configurable: true,
+      });
+      const client = new VoiceClient();
+      await client.start();
+      expect(latest(client).error).toBeTruthy();
+    }
+    const sentinel = {
+      addEventListener: vi.fn(),
+      release: vi.fn().mockResolvedValue(undefined),
+    };
+    Object.defineProperty(navigator, 'mediaDevices', {
+      value: { getUserMedia: vi.fn().mockResolvedValue(new FakeMediaStream()) },
+      configurable: true,
+    });
+    Object.defineProperty(navigator, 'wakeLock', {
+      value: { request: vi.fn().mockResolvedValue(sentinel) },
+      configurable: true,
+    });
+    apiMock.mockResolvedValueOnce({ ticket: 'ticket', websocket_path: '/api/v1/realtime' });
+    const client = new VoiceClient();
+    await client.start();
+    expect(latest(client).wakeLockState).toBe('acquired');
+    await client.end();
+    expect(sentinel.release).toHaveBeenCalled();
+
+    Object.defineProperty(navigator, 'wakeLock', {
+      value: { request: vi.fn().mockRejectedValue(new Error('blocked')) },
+      configurable: true,
+    });
+    apiMock.mockResolvedValueOnce({ ticket: 'ticket', websocket_path: '/api/v1/realtime' });
+    const blockedClient = new VoiceClient();
+    await blockedClient.start();
+    expect(latest(blockedClient).wakeLockState).toBe('blocked');
+    const blockedContext = Reflect.get(blockedClient, 'audioContext') as FakeAudioContext;
+    blockedContext.resume.mockRejectedValueOnce(new Error('gesture'));
+    await (
+      Reflect.get(blockedClient, 'resumeAudioContext') as (this: VoiceClient) => Promise<void>
+    ).call(blockedClient);
+    expect(latest(blockedClient).audioRetryAvailable).toBe(true);
+    await blockedClient.end();
+
+    Object.defineProperty(navigator, 'mediaDevices', { value: undefined, configurable: true });
+    const unsupportedClient = new VoiceClient();
+    await unsupportedClient.start();
+    expect(latest(unsupportedClient).error).toContain('nepodporuje');
+
+    Reflect.deleteProperty(navigator, 'wakeLock');
+    Object.defineProperty(navigator, 'mediaDevices', {
+      value: { getUserMedia: vi.fn().mockResolvedValue(new FakeMediaStream()) },
+      configurable: true,
+    });
+    apiMock.mockResolvedValueOnce({ ticket: 'ticket', websocket_path: '/api/v1/realtime' });
+    const unsupportedWakeLockClient = new VoiceClient();
+    await unsupportedWakeLockClient.start();
+    expect(latest(unsupportedWakeLockClient).wakeLockState).toBe('unsupported');
+    const unsupportedTrack = Reflect.get(
+      unsupportedWakeLockClient,
+      'mediaStream',
+    ) as FakeMediaStream;
+    unsupportedTrack.track.readyState = 'ended';
+    unsupportedTrack.track.events.get('ended')?.();
+    expect(latest(unsupportedWakeLockClient).trackState).toBe('ended');
+    await unsupportedWakeLockClient.end();
+
+    const lifecycleClient = new VoiceClient();
+    Reflect.set(lifecycleClient, 'snapshot', {
+      ...latest(lifecycleClient),
+      conversationId: 'conversation-1',
+    });
+    (Reflect.get(lifecycleClient, 'bindLifecycle') as (this: VoiceClient) => void).call(
+      lifecycleClient,
+    );
+    Object.defineProperty(document, 'hidden', { value: true, configurable: true });
+    document.dispatchEvent(new Event('visibilitychange'));
+    expect(latest(lifecycleClient).backgroundState).toBe('hidden');
+    Object.defineProperty(document, 'hidden', { value: false, configurable: true });
+    document.dispatchEvent(new Event('visibilitychange'));
+    window.dispatchEvent(new Event('online'));
+    expect(latest(lifecycleClient).connectionState).toBe('connecting');
+    await (
+      Reflect.get(lifecycleClient, 'acquireWakeLock') as (this: VoiceClient) => Promise<void>
+    ).call(lifecycleClient);
+    await lifecycleClient.end();
   });
 
   it('opens a resumed socket with generation and acknowledged cursor', async () => {
@@ -407,6 +540,8 @@ describe('VoiceClient', () => {
       value: { ...original, hostname: 'example.test' },
       configurable: true,
     });
-    await expect(new VoiceClient().start()).rejects.toThrow('HTTPS');
+    const client = new VoiceClient();
+    await client.start();
+    expect(latest(client).error).toContain('HTTPS');
   });
 });

@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import type { PropsWithChildren } from 'react';
 import { api, setCsrfToken } from '../../api/client';
+import { endVoiceSession } from '../../audio/voiceSession';
 
 type Profile = { display_name: string; email: string | null; email_state: string };
 type User = { id: string; username: string; state: string; profile: Profile };
@@ -55,6 +56,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
   );
 
   const logout = useCallback(async () => {
+    await endVoiceSession();
     await api<void>('/auth/logout', { method: 'POST' });
     setCsrfToken(null);
     setUser(null);
