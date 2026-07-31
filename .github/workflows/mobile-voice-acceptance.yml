@@ -76,12 +76,22 @@ jobs:
             exit 1
           fi
           boot_deadline=$((SECONDS + 600))
-          until adb shell getprop sys.boot_completed | tr -d '\r' | grep -q '^1$'; do
+          until adb devices | awk 'NR > 1 && $2 == "device" {found=1} END {exit(found ? 0 : 1)}'; do
             if ! kill -0 "$emulator_pid" 2>/dev/null; then
               echo 'Android emulator exited before boot completed.'
               cat /tmp/codex-android-emulator.log
               exit 1
             fi
+            adb reconnect offline >/dev/null 2>&1 || true
+            if (( SECONDS >= boot_deadline )); then
+              echo 'Android emulator did not become online within 600 seconds.'
+              cat /tmp/codex-android-emulator.log
+              adb logcat -d -t 200 || true
+              exit 1
+            fi
+            sleep 2
+          done
+          until adb shell getprop sys.boot_completed | tr -d '\r' | grep -q '^1$'; do
             if (( SECONDS >= boot_deadline )); then
               echo 'Android emulator did not finish booting within 600 seconds.'
               cat /tmp/codex-android-emulator.log
