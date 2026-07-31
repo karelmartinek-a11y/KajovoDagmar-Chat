@@ -42,7 +42,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   acceptance:
-    runs-on: ubuntu-24.04
+    runs-on: macos-14
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -55,6 +55,11 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with: {node-version: '22.23.2'}
       - run: npm install --global npm@10.9.8
+      - name: Start isolated Docker runtime
+        run: |
+          brew install colima docker docker-compose
+          colima start --cpu 4 --memory 8 --disk 50 --vm-type=vz --mount-type=virtiofs
+          docker info
       - run: make bootstrap
       - run: npx --prefix web playwright install --with-deps chromium
       - name: Run isolated browser and Android lifecycle acceptance
@@ -74,9 +79,7 @@ jobs:
           profile: pixel_2
           emulator-port: 5554
           force-avd-creation: true
-          # GitHub-hosted Linux runners do not grant this job /dev/kvm. Use
-          # the supported ARM64 image so software emulation remains valid.
-          disable-linux-hw-accel: true
+          disable-linux-hw-accel: false
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none
           disable-animations: true
           script: |
