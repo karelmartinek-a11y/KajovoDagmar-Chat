@@ -74,7 +74,9 @@ jobs:
           profile: pixel_2
           emulator-port: 5554
           force-avd-creation: true
-          disable-linux-hw-accel: true
+          # Let the GitHub-hosted runner use KVM when available; forcing
+          # software emulation leaves the Play Store image's adbd offline.
+          disable-linux-hw-accel: false
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none
           disable-animations: true
           script: |
