@@ -160,3 +160,57 @@
     grid-template-columns: 1fr;
   }
 }
+.model-explainer {
+  border: 1px solid var(--color-border, #d8d2c8);
+  border-radius: 14px;
+  padding: 1rem 1.1rem;
+  background: var(--color-surface-soft, #faf8f4);
+}
+
+.model-explainer h3,
+.model-role-card h3 {
+  margin: 0;
+}
+
+.model-role-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 1rem;
+}
+
+.model-role-card {
+  display: grid;
+  gap: 0.65rem;
+  padding: 1rem;
+  border: 1px solid var(--color-border, #d8d2c8);
+  border-radius: 14px;
+  min-width: 0;
+}
+
+.model-role-card details p {
+  margin: 0.5rem 0 0;
+}
+
+.recommendation-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.2rem 0.5rem;
+  border-radius: 999px;
+  background: #e7f5ec;
+  color: #17643a;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.row-wrap {
+  flex-wrap: wrap;
+}
+
+@media (max-width: 640px) {
+  .model-role-grid {
+    grid-template-columns: 1fr;
+  }
+  .model-role-card select {
+    max-width: 100%;
+  }
+}

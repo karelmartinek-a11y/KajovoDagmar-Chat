@@ -91,8 +91,14 @@ const settings = {
   conversation: {
     verbosity: setting('balanced', 'string', ['short', 'balanced', 'detailed'], 'next_turn'),
   },
-  models: { primary_model_id: setting('', 'string', [], 'new_voice_session') },
-  voice: { device: setting('default', 'string', [], 'new_voice_session') },
+  models: {
+    conversation_model: setting('', 'string', [], 'next_turn'),
+    transcription_model: setting('', 'string', [], 'new_voice_session'),
+    speech_model: setting('', 'string', [], 'new_voice_session'),
+    embedding_model: setting('', 'string', [], 'immediate'),
+    summary_model: setting('', 'string', [], 'next_turn'),
+  },
+  voice: { voice_id: setting('marin', 'string', [], 'new_voice_session') },
   memory: { retention: setting(30, 'integer') },
   history: { retention: setting(365, 'integer') },
   diagnostics: { level: setting('safe', 'string', ['safe', 'extended']) },
@@ -206,6 +212,49 @@ function successfulApi(path: string, init?: RequestInit): Promise<unknown> {
   if (path === '/profile/email/verify') return Promise.resolve({ email: 'karel@example.test' });
   if (path === '/settings') return Promise.resolve(settings);
   if (path === '/providers') return Promise.resolve({ items: [provider] });
+  if (path === '/providers/provider-1/model-options')
+    return Promise.resolve({
+      provider_id: 'provider-1',
+      provider_verified: true,
+      catalog_refreshed_at: '2026-07-29T10:00:00Z',
+      catalog_state: 'ready',
+      policy_version: '2026-07-31.v1',
+      roles: Object.fromEntries(
+        [
+          ['conversation_model', 'Mozek rozhovoru'],
+          ['transcription_model', 'Sluch – převod řeči na text'],
+          ['speech_model', 'Řeč – převod textu na hlas'],
+          ['embedding_model', 'Paměť – hledání souvisejících informací'],
+          ['summary_model', 'Archivář – názvy a shrnutí rozhovorů'],
+          ['unknown_model', 'Neznámá role'],
+        ].map(([key, title]) => [
+          key,
+          {
+            title,
+            plain_description: 'Lidské vysvětlení role.',
+            more_information: 'Další informace.',
+            recommended_model_id:
+              key === 'summary_model' || key === 'unknown_model' ? null : 'model-1',
+            selected_model_id: '',
+            status: key === 'unknown_model' ? 'missing_supported_model' : 'ready',
+            options:
+              key === 'unknown_model'
+                ? []
+                : [
+                    {
+                      id: 'model-1',
+                      external_id: 'model',
+                      display_name: 'Model',
+                      recommended: key !== 'summary_model',
+                      recommendation_reason: 'Doporučeno pro tuto roli.',
+                    },
+                  ],
+          },
+        ]),
+      ) as Record<string, object>,
+    });
+  if (path === '/providers/provider-1/apply-recommended-models')
+    return Promise.resolve({ options: { roles: {} } });
   if (path === '/notifications/email')
     return Promise.resolve({
       configured: true,
@@ -567,7 +616,25 @@ describe('settings behavior', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Modely a poskytovatelé' }));
     expect(await screen.findByText('…abcd', { exact: false })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Ověřit spojení a katalog' }));
+    expect(screen.getByRole('heading', { name: 'Proč je modelů více?' })).toBeInTheDocument();
+    for (const title of [
+      'Mozek rozhovoru',
+      'Sluch – převod řeči na text',
+      'Řeč – převod textu na hlas',
+      'Paměť – hledání souvisejících informací',
+      'Archivář – názvy a shrnutí rozhovorů',
+      'Barva hlasu Dagmar',
+    ]) {
+      expect(await screen.findByRole('heading', { name: title })).toBeInTheDocument();
+    }
+    expect(screen.getAllByText('Doporučeno').length).toBeGreaterThan(0);
+    fireEvent.click(screen.getByRole('button', { name: 'Použít doporučenou sestavu' }));
+    expect(await screen.findByRole('status')).toHaveTextContent('doporučenou sestavu');
+    fireEvent.change(screen.getAllByRole('combobox', { name: 'Vybraný model' })[0]!, {
+      target: { value: 'model-1' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Uložit výběr modelů' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Znovu ověřit klíč a nabídku modelů' }));
     const providerForm = screen
       .getByRole('heading', { name: 'Přidat poskytovatele' })
       .closest('form')!;
@@ -633,6 +700,28 @@ describe('settings behavior', () => {
     mocks.api.mockRejectedValue(new Error('offline'));
     render(<SettingsPage />);
     expect(await screen.findByRole('alert')).toHaveTextContent('Nastavení se nepodařilo načíst.');
+  });
+
+  it('keeps the settings usable when the verified model catalog is stale or unavailable', async () => {
+    mocks.api.mockImplementation((path: string, init?: RequestInit) => {
+      if (path === '/providers/provider-1/model-options') return Promise.resolve({});
+      return successfulApi(path, init);
+    });
+    render(<SettingsPage />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Modely a poskytovatelé' }));
+    expect(screen.getByRole('heading', { name: 'Proč je modelů více?' })).toBeInTheDocument();
+  });
+
+  it('does not show fabricated role options after a catalog request fails', async () => {
+    mocks.api.mockImplementation((path: string, init?: RequestInit) => {
+      if (path === '/providers/provider-1/model-options')
+        return Promise.reject(new Error('catalog unavailable'));
+      return successfulApi(path, init);
+    });
+    render(<SettingsPage />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Modely a poskytovatelé' }));
+    expect(screen.getByRole('heading', { name: 'Proč je modelů více?' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Mozek rozhovoru' })).not.toBeInTheDocument();
   });
 
   it('operates audit filters, manual backup, verification and isolated restore', async () => {

@@ -143,6 +143,8 @@ class ProviderConfiguration(Base, UUIDPrimaryKeyMixin, TimestampVersionMixin):
         String(40), nullable=False, default="not_verified"
     )
     verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    catalog_refreshed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    catalog_state: Mapped[str] = mapped_column(String(40), nullable=False, default="not_loaded")
     last_error_code: Mapped[str | None] = mapped_column(String(100))
     capabilities: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
     secret_id: Mapped[UUID | None] = mapped_column(

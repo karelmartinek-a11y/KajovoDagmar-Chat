@@ -39,6 +39,7 @@ from kajovodagmar.notifications.service import NotificationService
 from kajovodagmar.observability.logging import configure_logging
 from kajovodagmar.observability.tracing import configure_tracing
 from kajovodagmar.orchestration.service import OrchestrationService
+from kajovodagmar.providers.recommendations import ModelRecommendationService
 from kajovodagmar.providers.service import ProviderService
 from kajovodagmar.realtime.websocket import handle_realtime
 from kajovodagmar.search.service import HybridSearchService
@@ -58,6 +59,7 @@ async def lifespan(app: FastAPI):
     identity = IdentityService(audit)
     conversation_service = ConversationService(audit)
     provider_service = ProviderService(cipher, audit)
+    recommendation_service = ModelRecommendationService(audit)
     app.state.settings = infra
     app.state.database = database
     app.state.audit = audit
@@ -67,8 +69,10 @@ async def lifespan(app: FastAPI):
     search_service = HybridSearchService(provider_service)
     app.state.memory = memory_service
     app.state.history = history_service
-    app.state.settings_service = SettingsService(audit)
+    app.state.jobs = JobService()
+    app.state.settings_service = SettingsService(audit, provider_service, app.state.jobs)
     app.state.providers = provider_service
+    app.state.model_recommendations = recommendation_service
     app.state.search = search_service
     app.state.conversations = conversation_service
     app.state.orchestration = OrchestrationService(
@@ -79,7 +83,6 @@ async def lifespan(app: FastAPI):
         search_service,
         audit,
     )
-    app.state.jobs = JobService()
     app.state.exports = ExportService(audit, app.state.jobs, Path(infra.export_directory))
     app.state.notifications = NotificationService(cipher, audit, identity, infra.public_origin)
 

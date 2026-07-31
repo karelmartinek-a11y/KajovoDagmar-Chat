@@ -54,6 +54,10 @@ async def list_providers(
                 "secret_present": bool(secret and not secret.revoked_at),
                 "secret_hint": secret.masked_hint if secret else None,
                 "version": r.version,
+                "catalog_refreshed_at": r.catalog_refreshed_at.isoformat()
+                if r.catalog_refreshed_at
+                else None,
+                "catalog_state": r.catalog_state,
                 "models": [
                     {
                         "id": str(m.id),
@@ -87,7 +91,17 @@ async def save(
         expected_version=payload.expected_version,
         context=identity.audit_context,
     )
-    return {"id": str(row.id), "version": row.version, "verification_state": row.verification_state}
+    catalog = await request.app.state.providers.verify(session, row.id, identity.audit_context)
+    recommendations = await request.app.state.model_recommendations.apply_recommended(
+        session, row.id, identity.account.id, identity.audit_context
+    )
+    return {
+        "id": str(row.id),
+        "version": row.version,
+        "verification_state": row.verification_state,
+        "catalog_count": len(catalog),
+        "recommendations": recommendations,
+    }
 
 
 @router.post("/{provider_id}/verify")
@@ -98,6 +112,9 @@ async def verify(
     identity: RequestIdentity = Depends(csrf_guard),
 ):
     rows = await request.app.state.providers.verify(session, provider_id, identity.audit_context)
+    recommendations = await request.app.state.model_recommendations.apply_recommended(
+        session, provider_id, identity.account.id, identity.audit_context
+    )
     return {
         "verified": True,
         "models": [
@@ -109,4 +126,27 @@ async def verify(
             }
             for r in rows
         ],
+        "recommendations": recommendations,
     }
+
+
+@router.get("/{provider_id}/model-options")
+async def model_options(
+    provider_id: UUID,
+    request: Request,
+    session: AsyncSession = Depends(db_session),
+    identity: RequestIdentity = Depends(current_identity),
+):
+    return await request.app.state.model_recommendations.model_options(session, provider_id)
+
+
+@router.post("/{provider_id}/apply-recommended-models")
+async def apply_recommended(
+    provider_id: UUID,
+    request: Request,
+    session: AsyncSession = Depends(db_session),
+    identity: RequestIdentity = Depends(csrf_guard),
+):
+    return await request.app.state.model_recommendations.apply_recommended(
+        session, provider_id, identity.account.id, identity.audit_context
+    )

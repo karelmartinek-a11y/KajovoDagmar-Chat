@@ -83,6 +83,7 @@ class Worker:
             "password_reset_notification": self.password_reset_notification,
             "purge_expired": self.purge_expired,
             "export_generate": self.export_generate,
+            "search_reindex_all": self.search_reindex_all,
         }
 
     @traced("worker.run")
@@ -364,6 +365,30 @@ class Worker:
             existing.vector_data = serialized
             existing.dimensions = len(vector)
             existing.version += 1
+
+    async def search_reindex_all(self, session, job: BackgroundJob) -> None:
+        documents = list(
+            (
+                await session.scalars(
+                    select(SearchDocument)
+                    .where(SearchDocument.stale.is_(True))
+                    .order_by(SearchDocument.id)
+                    .with_for_update(skip_locked=True)
+                )
+            ).all()
+        )
+        for document in documents:
+            payload_key = "memory_id" if document.owner_type == "memory" else "conversation_id"
+            if document.owner_type not in {"memory", "conversation"}:
+                document.stale = False
+                continue
+            reindex_job = BackgroundJob(
+                kind="reindex_item", payload={payload_key: str(document.owner_id)}
+            )
+            if document.owner_type == "memory":
+                await self.memory_index(session, reindex_job)
+            else:
+                await self.conversation_index(session, reindex_job)
 
     async def corrected_turn_reprocess(self, session, job: BackgroundJob) -> None:
         message = await session.get(ConversationMessage, UUID(job.payload["message_id"]))
