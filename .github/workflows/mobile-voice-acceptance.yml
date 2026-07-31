@@ -70,8 +70,8 @@ jobs:
           avdmanager list avd
           emulator -avd codex-api30 -no-window -no-audio -no-boot-anim -no-snapshot -no-metrics -accel off -gpu swiftshader_indirect > /tmp/codex-android-emulator.log 2>&1 &
           emulator_pid=$!
-          if ! timeout 300s adb wait-for-device; then
-            echo 'Android emulator did not expose an adb device within 300 seconds.'
+          if ! timeout 600s adb wait-for-device; then
+            echo 'Android emulator did not expose an adb device within 600 seconds.'
             cat /tmp/codex-android-emulator.log
             exit 1
           fi
