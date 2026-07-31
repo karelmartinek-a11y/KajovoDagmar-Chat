@@ -58,7 +58,7 @@ jobs:
       - name: Start isolated Docker runtime
         run: |
           brew install colima docker docker-compose
-          colima start --cpu 4 --memory 8 --disk 50 --vm-type=vz --mount-type=virtiofs
+          colima start --cpu 4 --memory 8 --disk 50 --vm-type=qemu --mount-type=sshfs
           docker info
       - run: make bootstrap
       - run: npx --prefix web playwright install --with-deps chromium
