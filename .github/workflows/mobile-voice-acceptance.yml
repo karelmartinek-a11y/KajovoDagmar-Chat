@@ -70,12 +70,12 @@ jobs:
           avdmanager list avd
           emulator -avd codex-api35 -no-window -no-audio -no-boot-anim -no-snapshot -no-metrics -accel off -gpu swiftshader_indirect > /tmp/codex-android-emulator.log 2>&1 &
           emulator_pid=$!
-          if ! timeout 90s adb wait-for-device; then
-            echo 'Android emulator did not expose an adb device within 90 seconds.'
+          if ! timeout 300s adb wait-for-device; then
+            echo 'Android emulator did not expose an adb device within 300 seconds.'
             cat /tmp/codex-android-emulator.log
             exit 1
           fi
-          boot_deadline=$((SECONDS + 300))
+          boot_deadline=$((SECONDS + 600))
           until adb shell getprop sys.boot_completed | tr -d '\r' | grep -q '^1$'; do
             if ! kill -0 "$emulator_pid" 2>/dev/null; then
               echo 'Android emulator exited before boot completed.'
@@ -83,7 +83,7 @@ jobs:
               exit 1
             fi
             if (( SECONDS >= boot_deadline )); then
-              echo 'Android emulator did not finish booting within 300 seconds.'
+              echo 'Android emulator did not finish booting within 600 seconds.'
               cat /tmp/codex-android-emulator.log
               adb logcat -d -t 200 || true
               exit 1
