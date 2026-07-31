@@ -71,7 +71,6 @@ it('does not let an older state response overwrite a newer refresh', async () =>
     resolveInitialState = resolve;
   });
   let stateCalls = 0;
-  let userCalls = 0;
   mocks.api.mockImplementation((path: string) => {
     if (path === '/auth/state') {
       stateCalls += 1;
