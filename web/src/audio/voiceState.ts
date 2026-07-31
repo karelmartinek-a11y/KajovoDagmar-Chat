@@ -9,6 +9,33 @@ export type VoiceState =
   | 'error'
   | 'ended';
 
+export type PermissionState = 'unknown' | 'prompt' | 'granted' | 'denied';
+export type DeviceState = 'available' | 'missing' | 'busy' | 'changed' | 'unknown';
+export type TrackState = 'live' | 'muted_by_system' | 'ended' | 'disabled_by_app' | 'unavailable';
+export type CaptureState =
+  | 'idle'
+  | 'requesting'
+  | 'capturing'
+  | 'temporarily_suspended'
+  | 'paused_by_user'
+  | 'recovering'
+  | 'failed';
+export type AudioContextState = 'running' | 'suspended' | 'interrupted' | 'closed' | 'unknown';
+export type ConnectionState =
+  | 'disconnected'
+  | 'connecting'
+  | 'connected'
+  | 'reconnecting'
+  | 'offline';
+export type TurnState =
+  | 'idle'
+  | 'listening'
+  | 'transcribing'
+  | 'thinking'
+  | 'speaking'
+  | 'waiting_for_confirmation';
+export type BackgroundState = 'foreground' | 'hidden' | 'frozen' | 'restoring';
+
 const allowed: Record<VoiceState, readonly VoiceState[]> = {
   ready: ['connecting'],
   connecting: ['listening', 'error', 'ended'],

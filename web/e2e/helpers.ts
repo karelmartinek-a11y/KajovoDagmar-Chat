@@ -4,8 +4,16 @@ export const password = process.env.E2E_PASSWORD ?? 'Bezpečná syntetická vět
 export const initializationSecret = process.env.E2E_INITIALIZATION_SECRET ?? '';
 
 export async function ensureAuthenticated(page: Page): Promise<void> {
-  await page.goto('/');
-  await page.locator('h1').waitFor();
+  await page.goto('/', { waitUntil: 'domcontentloaded' });
+  const heading = page.locator('h1');
+  try {
+    await heading.waitFor({ timeout: 10_000 });
+  } catch {
+    // Caddy can report healthy while the first proxied document is still warming up.
+    // Retry the same isolated endpoint rather than masking a real application error.
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await heading.waitFor();
+  }
   if (
     await page
       .getByRole('heading', { name: 'Bezpečné první spuštění' })

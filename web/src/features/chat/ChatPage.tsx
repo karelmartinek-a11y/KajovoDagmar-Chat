@@ -1,5 +1,6 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react';
-import { VoiceClient, type VoiceSnapshot } from '../../audio/VoiceClient';
+import type { VoiceSnapshot } from '../../audio/VoiceClient';
+import { getVoiceClient } from '../../audio/voiceSession';
 import { Orb } from './Orb';
 import { Feedback } from '../../components/Feedback';
 import './chat.css';
@@ -8,28 +9,11 @@ function displayValue(value: unknown): string | null {
   return typeof value === 'string' || typeof value === 'number' ? String(value) : null;
 }
 
-const initial: VoiceSnapshot = {
-  state: 'ready',
-  stateMessage: 'Připraveno',
-  transcript: [],
-  partialTranscript: '',
-  error: null,
-  microphoneActive: false,
-  conversationId: null,
-  actions: [],
-};
-
 export function ChatPage() {
-  const client = useMemo(() => new VoiceClient(), []);
-  const [snapshot, setSnapshot] = useState(initial);
+  const client = useMemo(() => getVoiceClient(), []);
+  const [snapshot, setSnapshot] = useState<VoiceSnapshot>(initialSnapshot);
   const [text, setText] = useState('');
   useEffect(() => client.subscribe(setSnapshot), [client]);
-  useEffect(
-    () => () => {
-      void client.end();
-    },
-    [client],
-  );
 
   async function mainAction() {
     if (snapshot.state === 'ready' || snapshot.state === 'ended' || snapshot.state === 'error')
@@ -40,8 +24,10 @@ export function ChatPage() {
   function submitText(event: FormEvent) {
     event.preventDefault();
     if (!text.trim()) return;
-    if (!snapshot.conversationId) void client.startAndSendText(text.trim());
-    else void client.sendText(text.trim());
+    const request = !snapshot.conversationId
+      ? client.startAndSendText(text.trim())
+      : client.sendText(text.trim());
+    void Promise.resolve(request).catch(() => undefined);
     setText('');
   }
 
@@ -57,9 +43,14 @@ export function ChatPage() {
           <Orb state={snapshot.state} onActivate={() => void mainAction()} />
           <div className="status voice-status" aria-live="polite">
             <strong>{snapshot.stateMessage}</strong>
-            <span>
-              {snapshot.microphoneActive ? 'Mikrofon je aktivní' : 'Mikrofon není aktivní'}
-            </span>
+            <span>{microphoneMessage(snapshot)}</span>
+            <span>Stav spojení: {connectionMessage(snapshot.connectionState)}</span>
+            {snapshot.wakeLockState === 'acquired' && (
+              <span>Obrazovka zůstane během rozhovoru zapnutá</span>
+            )}
+            {snapshot.wakeLockState === 'blocked' && (
+              <span>Telefon nepovolil udržení obrazovky</span>
+            )}
           </div>
           <div className="row controls">
             {(snapshot.state === 'ready' ||
@@ -79,7 +70,12 @@ export function ChatPage() {
             )}
             {snapshot.state === 'paused' && (
               <button className="primary" onClick={() => void client.resume()}>
-                Obnovit naslouchání
+                Obnovit mikrofon
+              </button>
+            )}
+            {snapshot.audioRetryAvailable && snapshot.state !== 'paused' && (
+              <button className="primary" onClick={() => client.retrySpeech()}>
+                Zkusit přehrát hlas znovu
               </button>
             )}
             {snapshot.state === 'responding' && (
@@ -173,4 +169,51 @@ export function ChatPage() {
       </div>
     </section>
   );
+}
+
+const initialSnapshot: VoiceSnapshot = {
+  state: 'ready',
+  stateMessage: 'Připraveno',
+  transcript: [],
+  partialTranscript: '',
+  error: null,
+  microphoneActive: false,
+  permissionState: 'unknown',
+  deviceState: 'unknown',
+  trackState: 'unavailable',
+  captureState: 'idle',
+  audioContextState: 'unknown',
+  connectionState: 'disconnected',
+  turnState: 'idle',
+  backgroundState: 'foreground',
+  wakeLockState: 'unsupported',
+  lastAudioFrameAt: null,
+  audioRetryAvailable: false,
+  conversationId: null,
+  actions: [],
+};
+
+function microphoneMessage(snapshot: VoiceSnapshot): string {
+  if (snapshot.backgroundState !== 'foreground')
+    return 'Rozhovor pokračuje, mikrofon může být systémem pozastaven';
+  if (snapshot.permissionState === 'denied') return 'Povolte mikrofon v nastavení prohlížeče';
+  if (snapshot.deviceState === 'missing') return 'Mikrofon nebyl nalezen';
+  if (snapshot.trackState === 'muted_by_system' || snapshot.audioContextState === 'interrupted')
+    return 'Telefon dočasně pozastavil mikrofon';
+  if (snapshot.captureState === 'paused_by_user') return 'Mikrofon je pozastavený';
+  if (snapshot.microphoneActive) return 'Mikrofon naslouchá';
+  if (snapshot.turnState === 'speaking') return 'Dagmar odpovídá – mikrofon zůstává připravený';
+  if (snapshot.trackState === 'live') return 'Mikrofon je připravený – právě čekám na odpověď';
+  if (snapshot.captureState === 'recovering') return 'Obnovuji mikrofon a hlasové spojení';
+  return 'Klepnutím obnovte mikrofon';
+}
+
+function connectionMessage(state: VoiceSnapshot['connectionState']): string {
+  return {
+    connected: 'připojeno',
+    connecting: 'připojování',
+    reconnecting: 'obnovuje se',
+    offline: 'offline',
+    disconnected: 'odpojeno',
+  }[state];
 }

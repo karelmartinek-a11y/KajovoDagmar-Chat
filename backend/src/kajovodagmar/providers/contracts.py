@@ -25,6 +25,7 @@ class ChatRequest:
     response_schema: dict[str, Any]
     temperature: float
     timeout_seconds: float
+    capabilities: frozenset[str] = frozenset()
 
 
 @dataclass(frozen=True, slots=True)

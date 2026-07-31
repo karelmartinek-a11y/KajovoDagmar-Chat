@@ -46,13 +46,12 @@ class OpenAICompatibleProvider(AIProvider):
 
     @traced("provider.chat")
     async def chat(self, request: ChatRequest) -> ChatResult:
-        payload = {
+        payload: dict[str, Any] = {
             "model": request.model,
             "input": [
                 {"role": m.role, "content": [{"type": "input_text", "text": m.content}]}
                 for m in request.messages
             ],
-            "temperature": request.temperature,
             "text": {
                 "format": {
                     "type": "json_schema",
@@ -62,6 +61,12 @@ class OpenAICompatibleProvider(AIProvider):
                 }
             },
         }
+        # An empty capability set is the legacy-compatible policy. A populated
+        # catalog entry is authoritative and prevents unsupported parameters.
+        if not request.capabilities or "temperature" in request.capabilities:
+            payload["temperature"] = request.temperature
+        if request.capabilities and "json_schema" not in request.capabilities:
+            payload.pop("text", None)
         async with httpx.AsyncClient(timeout=request.timeout_seconds) as client:
             response = await client.post(
                 f"{self.base_url}/responses", headers=self._headers(), json=payload
@@ -117,8 +122,6 @@ class OpenAICompatibleProvider(AIProvider):
             "voice": voice,
             "input": text,
             "response_format": "pcm",
-            "sample_rate": 24000,
-            "language": language,
         }
         async with (
             httpx.AsyncClient(timeout=self.timeout) as client,
@@ -160,6 +163,33 @@ class OpenAICompatibleProvider(AIProvider):
     def _raise(response: httpx.Response, capability: str) -> None:
         if response.status_code < 400:
             return
+        request_id = response.headers.get("x-request-id") or response.headers.get("request-id")
+        error_type: str | None = None
+        error_code: str | None = None
+        error_param: str | None = None
+        try:
+            body = response.json()
+            error = body.get("error", {}) if isinstance(body, dict) else {}
+            if isinstance(error, dict):
+                error_type = error.get("type") if isinstance(error.get("type"), str) else None
+                error_code = error.get("code") if isinstance(error.get("code"), str) else None
+                error_param = error.get("param") if isinstance(error.get("param"), str) else None
+        except (ValueError, TypeError):
+            pass
+        details: dict[str, Any] = {
+            "status": response.status_code,
+            "capability": capability,
+            "endpoint": response.request.url.path if response.request else capability,
+        }
+        provider_values = (
+            ("provider_request_id", request_id),
+            ("provider_error_type", error_type),
+            ("provider_error_code", error_code),
+            ("provider_param", error_param),
+        )
+        for key, value in provider_values:
+            if value:
+                details[key] = value
         if response.status_code in {401, 403}:
             raise CapabilityUnavailableError(
                 capability,
@@ -171,11 +201,31 @@ class OpenAICompatibleProvider(AIProvider):
             )
         if response.status_code == 429:
             raise DomainError(
-                "provider_rate_limited", "Poskytovatel dočasně omezuje požadavky.", 503
+                "provider_rate_limited", "Poskytovatel dočasně omezuje požadavky.", 503, details
+            )
+        if response.status_code in {402, 409} or error_code in {
+            "insufficient_quota",
+            "billing_hard_limit_reached",
+        }:
+            raise DomainError(
+                "provider_quota",
+                "API účet nemá dostupný kredit nebo povolené čerpání.",
+                503,
+                details,
+            )
+        if response.status_code == 400 or error_type in {
+            "invalid_request_error",
+            "invalid_parameter_error",
+        }:
+            raise DomainError(
+                "provider_invalid_parameter",
+                "Nastavení požadavku není kompatibilní s vybraným modelem.",
+                502,
+                details,
             )
         raise DomainError(
             "provider_error",
             "Externí poskytovatel vrátil technickou chybu.",
             502,
-            {"status": response.status_code},
+            details,
         )
