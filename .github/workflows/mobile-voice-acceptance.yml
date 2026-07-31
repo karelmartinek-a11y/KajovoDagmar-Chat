@@ -62,7 +62,7 @@ jobs:
           export ANDROID_HOME="${ANDROID_HOME:-$ANDROID_SDK_ROOT}"
           export PATH="$ANDROID_HOME/emulator:$ANDROID_HOME/platform-tools:$ANDROID_HOME/cmdline-tools/latest/bin:$PATH"
           yes | sdkmanager --licenses >/dev/null || true
-          sdkmanager "platform-tools" "emulator" "platforms;android-35" "system-images;android-35;google_apis;x86_64"
+          yes | sdkmanager "platform-tools" "emulator" "platforms;android-35" "system-images;android-35;google_apis;x86_64"
           echo no | avdmanager create avd --name codex-api35 --package "system-images;android-35;google_apis;x86_64" --force
           emulator -avd codex-api35 -no-window -no-audio -no-boot-anim -no-snapshot -accel off -gpu swiftshader_indirect > /tmp/codex-android-emulator.log 2>&1 &
           adb wait-for-device
