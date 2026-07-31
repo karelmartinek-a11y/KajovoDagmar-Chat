@@ -11,6 +11,9 @@ EVIDENCE := release/evidence/generated
 
 .PHONY: bootstrap dev format format-check lint typecheck test test-integration test-backend-coverage test-contract test-e2e test-accessibility test-visual test-ai test-performance test-security build migrate compose-up compose-down compose-runtime-check backup-check restore-check sbom vulnerability-gate traceability acceptance toolchain-check source-check release-check clean
 
+$(EVIDENCE):
+	mkdir -p $(EVIDENCE)
+
 toolchain-check:
 	python scripts/check_toolchain.py
 
@@ -43,37 +46,37 @@ typecheck:
 	$(MYPY) backend/src tests scripts deployment/backup_agent.py
 	$(NPM) run typecheck
 
-test:
+test: | $(EVIDENCE)
 	$(PYTEST) tests/unit tests/requirements
 	$(NPM) run test
 	cp web/coverage/coverage-summary.json $(EVIDENCE)/coverage-frontend.json
 
-test-integration:
+test-integration: | $(EVIDENCE)
 	$(PYTEST) -m integration tests/integration --junitxml=$(EVIDENCE)/integration.xml
 
-test-backend-coverage:
+test-backend-coverage: | $(EVIDENCE)
 	$(PYTEST) tests/unit tests/requirements tests/integration --junitxml=$(EVIDENCE)/backend-coverage-tests.xml --cov=backend/src/kajovodagmar --cov-branch --cov-report=term-missing --cov-report=xml:$(EVIDENCE)/coverage-backend.xml --cov-report=json:$(EVIDENCE)/coverage-backend.json
 	$(PYTHON) scripts/check_backend_coverage.py $(EVIDENCE)/coverage-backend.json
 
-test-contract:
+test-contract: | $(EVIDENCE)
 	$(PYTEST) tests/contract --junitxml=$(EVIDENCE)/contract.xml
 
 test-e2e:
 	$(NPM) run e2e
 
-test-accessibility:
+test-accessibility: | $(EVIDENCE)
 	$(PYTEST) tests/accessibility --junitxml=$(EVIDENCE)/accessibility.xml
 
-test-visual:
+test-visual: | $(EVIDENCE)
 	$(PYTEST) tests/visual --junitxml=$(EVIDENCE)/visual.xml
 
-test-ai:
+test-ai: | $(EVIDENCE)
 	$(PYTEST) -m ai_eval tests/ai_eval --junitxml=$(EVIDENCE)/ai-eval.xml
 
-test-performance:
+test-performance: | $(EVIDENCE)
 	$(PYTEST) -m performance tests/performance --junitxml=$(EVIDENCE)/performance.xml
 
-test-security:
+test-security: | $(EVIDENCE)
 	$(PYTEST) -m security tests/security --junitxml=$(EVIDENCE)/security.xml
 	gitleaks dir . --redact --report-format json --report-path $(EVIDENCE)/gitleaks.json
 	backend/.venv/bin/bandit -q -r backend/src -c backend/pyproject.toml -f json -o $(EVIDENCE)/bandit.json
@@ -95,10 +98,10 @@ compose-up:
 compose-down:
 	$(COMPOSE) down
 
-compose-runtime-check:
+compose-runtime-check: | $(EVIDENCE)
 	./scripts/check_compose_runtime.sh > $(EVIDENCE)/compose-runtime-check.txt
 
-backup-check:
+backup-check: | $(EVIDENCE)
 	./scripts/backup.sh > $(EVIDENCE)/backup-check.json
 
 restore-check:
