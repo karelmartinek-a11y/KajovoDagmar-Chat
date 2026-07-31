@@ -1,4 +1,12 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import type { PropsWithChildren } from 'react';
 import { api, setCsrfToken } from '../../api/client';
 import { endVoiceSession } from '../../audio/voiceSession';
@@ -23,21 +31,26 @@ export function AuthProvider({ children }: PropsWithChildren) {
   const [user, setUser] = useState<User | null>(null);
   const [username, setUsername] = useState('Karmar78');
   const [loading, setLoading] = useState(true);
+  const refreshSequence = useRef(0);
 
   const refresh = useCallback(async () => {
+    const sequence = ++refreshSequence.current;
     setLoading(true);
     const state = await api<{
       instance_state: 'uninitialized' | 'active';
       username: string;
     }>('/auth/state');
+    if (sequence !== refreshSequence.current) return;
     setUsername(state.username);
     setInstanceState(state.instance_state);
     if (state.instance_state === 'active') {
       try {
         const current = await api<User>('/auth/me');
+        if (sequence !== refreshSequence.current) return;
         setUsername(current.username);
         setUser(current);
       } catch {
+        if (sequence !== refreshSequence.current) return;
         setUser(null);
       }
     } else {
