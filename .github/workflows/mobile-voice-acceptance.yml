@@ -69,7 +69,7 @@ jobs:
           BACKGROUND_SECONDS: ${{ inputs.background_seconds || '10' }}
         with:
           api-level: 30
-          target: google_apis_playstore
+          target: google_apis
           arch: x86
           profile: pixel_2
           emulator-port: 5554

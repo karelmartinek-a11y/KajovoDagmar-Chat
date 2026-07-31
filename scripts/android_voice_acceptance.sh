@@ -14,12 +14,25 @@ fi
 
 adb -s "$device" reverse tcp:18443 tcp:18443
 browser_package=""
-for candidate in com.android.chrome com.google.android.apps.chrome com.android.browser; do
+for candidate in com.android.chrome com.google.android.apps.chrome org.chromium.chrome com.android.browser; do
   if adb -s "$device" shell pm path "$candidate" 2>/dev/null | grep -q '^package:'; then
     browser_package="$candidate"
     break
   fi
 done
+if [[ -z "$browser_package" ]]; then
+  chromium_url="${CHROMIUM_APK_URL:-https://commondatastorage.googleapis.com/chromium-browser-snapshots/Android/1672125/chrome-android.zip}"
+  apk_tmp=$(mktemp -d)
+  trap 'rm -rf "$apk_tmp"' EXIT
+  curl --fail --location --silent --show-error --retry 3 "$chromium_url" -o "$apk_tmp/chromium.zip"
+  unzip -q -j "$apk_tmp/chromium.zip" '*/apks/ChromePublic.apk' -d "$apk_tmp"
+  chromium_apk="$apk_tmp/ChromePublic.apk"
+  [[ -s "$chromium_apk" ]] || { echo "Chromium APK was not found in snapshot archive." >&2; exit 1; }
+  adb -s "$device" install -r "$chromium_apk"
+  if adb -s "$device" shell pm path org.chromium.chrome 2>/dev/null | grep -q '^package:'; then
+    browser_package=org.chromium.chrome
+  fi
+fi
 if [[ -z "$browser_package" ]]; then
   echo "No Android browser package is installed." >&2
   exit 1
