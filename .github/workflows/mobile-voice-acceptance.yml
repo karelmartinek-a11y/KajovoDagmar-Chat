@@ -103,7 +103,10 @@ jobs:
           RUN_WEBKIT: 'true'
           ANDROID_EMULATOR_REQUIRED: 'true'
           BACKGROUND_SECONDS: ${{ inputs.background_seconds || '10' }}
-        run: make autonomous-voice-acceptance
+        run: |
+          export ANDROID_HOME="${ANDROID_HOME:-$ANDROID_SDK_ROOT}"
+          export PATH="$ANDROID_HOME/emulator:$ANDROID_HOME/platform-tools:$ANDROID_HOME/cmdline-tools/latest/bin:$PATH"
+          make autonomous-voice-acceptance
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()
         with:
