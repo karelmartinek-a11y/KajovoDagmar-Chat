@@ -9,7 +9,7 @@ NPM := npm --prefix web
 COMPOSE := docker compose -f deployment/compose.yaml
 EVIDENCE := release/evidence/generated
 
-.PHONY: bootstrap dev format format-check lint typecheck test test-integration test-backend-coverage test-contract test-e2e test-accessibility test-visual test-ai test-performance test-security build migrate compose-up compose-down compose-runtime-check backup-check restore-check sbom vulnerability-gate traceability acceptance toolchain-check source-check release-check clean
+.PHONY: bootstrap dev format format-check lint typecheck test test-integration test-backend-coverage test-contract test-e2e test-accessibility test-visual test-ai test-performance test-security build migrate compose-up compose-down compose-runtime-check backup-check restore-check sbom vulnerability-gate traceability acceptance toolchain-check source-check release-check acceptance-bootstrap test-voice-browser test-voice-android test-voice-chaos autonomous-voice-acceptance provider-contract-probe clean
 
 $(EVIDENCE):
 	mkdir -p $(EVIDENCE)
@@ -63,6 +63,25 @@ test-contract: | $(EVIDENCE)
 
 test-e2e:
 	$(NPM) run e2e
+
+acceptance-bootstrap:
+	ITERATIONS=0 ./scripts/autonomous_voice_acceptance.sh
+
+test-voice-browser:
+	ITERATIONS=1 ./scripts/autonomous_voice_acceptance.sh
+
+test-voice-android:
+	ANDROID_EMULATOR_REQUIRED=true ./scripts/android_voice_acceptance.sh
+
+test-voice-chaos:
+	ITERATIONS=$${ITERATIONS:-5} ./scripts/autonomous_voice_acceptance.sh
+
+autonomous-voice-acceptance:
+	ITERATIONS=$${ITERATIONS:-5} ./scripts/autonomous_voice_acceptance.sh
+
+provider-contract-probe:
+	@test "$${KAJOVODAGMAR_SERVER_PROBE:-}" = true || (echo "Server-side only: set KAJOVODAGMAR_SERVER_PROBE=true inside the deployment container." >&2; exit 1)
+	$(PYTHON) -m kajovodagmar.diagnostics.voice_live_probe
 
 test-accessibility: | $(EVIDENCE)
 	$(PYTEST) tests/accessibility --junitxml=$(EVIDENCE)/accessibility.xml

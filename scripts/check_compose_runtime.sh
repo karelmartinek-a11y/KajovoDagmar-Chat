@@ -1,28 +1,31 @@
 #!/bin/sh
 set -eu
 
-for container in \
-  kajovodagmar-db-1 \
-  kajovodagmar-web-1 \
-  kajovodagmar-worker-1 \
-  kajovodagmar-backup-agent-1 \
-  kajovodagmar-caddy-1
+PROJECT=${COMPOSE_PROJECT_NAME:-kajovodagmar}
+compose_container(){
+  docker compose -p "$PROJECT" -f deployment/compose.yaml ps -q "$1"
+}
+
+for service in db web worker backup-agent caddy
 do
+  container=$(compose_container "$service")
   state=$(docker inspect "$container" --format '{{.State.Status}} {{.RestartCount}}')
   if [ "$state" != "running 0" ]; then
-    echo "$container má nepřijatelný runtime stav: $state" >&2
+    echo "$service ($container) má nepřijatelný runtime stav: $state" >&2
     exit 1
   fi
-  echo "$container: running, restarts=0"
+  echo "$service ($container): running, restarts=0"
 done
 
-if docker logs kajovodagmar-db-1 2>&1 |
+DB_CONTAINER=$(compose_container db)
+WORKER_CONTAINER=$(compose_container worker)
+if docker logs "$DB_CONTAINER" 2>&1 |
   grep -Eq 'all server processes terminated; reinitializing|server process .* exited with exit code'; then
   echo "PostgreSQL log dokládá neočekávaný restart serverových procesů." >&2
   exit 1
 fi
 
-if docker logs kajovodagmar-worker-1 2>&1 |
+if docker logs "$WORKER_CONTAINER" 2>&1 |
   grep -Eq 'Traceback|job\.failed|worker\.stopped'; then
   echo "Worker log obsahuje pád nebo nezpracovaný job." >&2
   exit 1

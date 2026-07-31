@@ -2,6 +2,7 @@
 set -eu -o pipefail
 ROOT=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
 cd "$ROOT"
+export COMPOSE_PROJECT_NAME="kajovodagmar-release-check-${RANDOM}-$$"
 if command -v brew >/dev/null 2>&1; then
   NODE22_PREFIX=$(brew --prefix node@22 2>/dev/null || true)
   if [ -n "$NODE22_PREFIX" ] && [ -x "$NODE22_PREFIX/bin/node" ]; then
@@ -51,10 +52,14 @@ export HTTP_PORT="${HTTP_PORT:-18080}"
 export HTTPS_PORT="${HTTPS_PORT:-18443}"
 export KAJOVODAGMAR_ENVIRONMENT=production
 export KAJOVODAGMAR_PUBLIC_ORIGIN="https://localhost:${HTTPS_PORT}"
-export E2E_INITIALIZATION_SECRET="${E2E_INITIALIZATION_SECRET:-synthetic-e2e-initialization-secret}"
+export E2E_INITIALIZATION_SECRET="${E2E_INITIALIZATION_SECRET:-e2e-$(openssl rand -hex 24)}"
+export E2E_PASSWORD="${E2E_PASSWORD:-E2E-$(openssl rand -hex 32)-synthetic}"
+export E2E_USERNAME="${E2E_USERNAME:-acceptance-$(openssl rand -hex 8)}"
+export KAJOVODAGMAR_INITIALIZATION_SECRET_HASH="$(PYTHONPATH=backend/src "$RECORD_PY" -c 'import os; from kajovodagmar.security.crypto import token_digest; print(token_digest(os.environ["E2E_INITIALIZATION_SECRET"], "initialization"))')"
 export ACME_EMAIL="${ACME_EMAIL:-ci@example.invalid}"
 export POSTGRES_PASSWORD="${POSTGRES_PASSWORD:-synthetic-release-check-password}"
 export PGBACKREST_REPO1_CIPHER_PASS="${PGBACKREST_REPO1_CIPHER_PASS:-synthetic-release-check-backup-encryption-passphrase}"
+run compose_stack_reset docker compose -f deployment/compose.yaml down -v --remove-orphans
 run compose_database docker compose -f deployment/compose.yaml up -d --wait db pgbackrest
 run backup_stanza docker compose -f deployment/compose.yaml exec -T --user postgres db pgbackrest --stanza=kajovodagmar stanza-create
 run migrations docker compose -f deployment/compose.yaml run --rm web alembic upgrade head

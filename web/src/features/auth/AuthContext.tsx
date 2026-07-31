@@ -21,15 +21,22 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 export function AuthProvider({ children }: PropsWithChildren) {
   const [instanceState, setInstanceState] = useState<InstanceState>('loading');
   const [user, setUser] = useState<User | null>(null);
+  const [username, setUsername] = useState('Karmar78');
   const [loading, setLoading] = useState(true);
 
   const refresh = useCallback(async () => {
     setLoading(true);
-    const state = await api<{ instance_state: 'uninitialized' | 'active' }>('/auth/state');
+    const state = await api<{
+      instance_state: 'uninitialized' | 'active';
+      username: string;
+    }>('/auth/state');
+    setUsername(state.username);
     setInstanceState(state.instance_state);
     if (state.instance_state === 'active') {
       try {
-        setUser(await api<User>('/auth/me'));
+        const current = await api<User>('/auth/me');
+        setUsername(current.username);
+        setUser(current);
       } catch {
         setUser(null);
       }
@@ -47,12 +54,12 @@ export function AuthProvider({ children }: PropsWithChildren) {
     async (password: string) => {
       const response = await api<{ csrf_token: string }>('/auth/login', {
         method: 'POST',
-        body: JSON.stringify({ username: 'Karmar78', password }),
+        body: JSON.stringify({ username, password }),
       });
       setCsrfToken(response.csrf_token);
       await refresh();
     },
-    [refresh],
+    [refresh, username],
   );
 
   const logout = useCallback(async () => {

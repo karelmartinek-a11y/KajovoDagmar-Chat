@@ -11,7 +11,12 @@ import typer
 from sqlalchemy import select
 
 from kajovodagmar.config import get_settings
-from kajovodagmar.db.models import SystemInstance
+from kajovodagmar.db.models import (
+    ApplicationSetting,
+    ModelCatalogEntry,
+    ProviderConfiguration,
+    SystemInstance,
+)
 from kajovodagmar.db.session import Database
 from kajovodagmar.security.crypto import generate_token, token_digest
 
@@ -96,6 +101,108 @@ def integrity_check() -> None:
 def hash_file(path: Path) -> None:
     digest = hashlib.sha256(path.read_bytes()).hexdigest()
     typer.echo(digest)
+
+
+@app.command("diagnostics-voice-live-probe")
+def diagnostics_voice_live_probe() -> None:  # pragma: no cover - subprocess entrypoint
+    """Run redacted live provider probes using the server-side encrypted configuration."""
+    from kajovodagmar.diagnostics.voice_live_probe import main
+
+    raise typer.Exit(main())
+
+
+@app.command("acceptance-seed-provider")
+def acceptance_seed_provider() -> None:  # pragma: no cover - subprocess entrypoint
+    """Seed only the deterministic provider in a test database."""
+
+    async def run() -> None:
+        settings = get_settings()
+        if settings.environment != "test":
+            raise RuntimeError(
+                "Deterministický provider lze seedovat pouze v testovacím prostředí."
+            )
+        db = Database(settings)
+        try:
+            async with db.session() as session:
+                provider = await session.scalar(
+                    select(ProviderConfiguration).where(
+                        ProviderConfiguration.provider_type == "deterministic"
+                    )
+                )
+                if provider is None:
+                    provider = ProviderConfiguration(
+                        provider_type="deterministic",
+                        display_name="Isolated synthetic acceptance provider",
+                        base_url="http://synthetic.invalid",
+                        enabled=True,
+                        verification_state="verified",
+                        catalog_state="ready",
+                    )
+                    session.add(provider)
+                    await session.flush()
+                for role, suffix, capabilities in (
+                    (
+                        "conversation_model",
+                        "conversation",
+                        {"responses": True, "structured_outputs": True, "chat": True},
+                    ),
+                    ("transcription_model", "transcription", {"transcriptions": True}),
+                    ("speech_model", "speech", {"speech": True}),
+                    ("embedding_model", "embedding", {"embeddings": True}),
+                ):
+                    external_id = f"synthetic-acceptance-{suffix}"
+                    model = await session.scalar(
+                        select(ModelCatalogEntry).where(
+                            ModelCatalogEntry.provider_id == provider.id,
+                            ModelCatalogEntry.external_id == external_id,
+                            ModelCatalogEntry.role == role,
+                        )
+                    )
+                    if model is None:
+                        model = ModelCatalogEntry(
+                            provider_id=provider.id,
+                            external_id=external_id,
+                            display_name=f"Synthetic {role}",
+                            role=role,
+                            capabilities=capabilities,
+                            available=True,
+                        )
+                        session.add(model)
+                        await session.flush()
+                    setting = await session.scalar(
+                        select(ApplicationSetting).where(
+                            ApplicationSetting.area == "models", ApplicationSetting.key == role
+                        )
+                    )
+                    if setting is None:
+                        session.add(
+                            ApplicationSetting(
+                                area="models",
+                                key=role,
+                                value={"value": str(model.id)},
+                                effect_boundary="immediate",
+                            )
+                        )
+                    else:
+                        setting.value = {"value": str(model.id)}
+                voice = await session.scalar(
+                    select(ApplicationSetting).where(
+                        ApplicationSetting.area == "voice", ApplicationSetting.key == "voice_id"
+                    )
+                )
+                if voice is None:
+                    session.add(
+                        ApplicationSetting(
+                            area="voice",
+                            key="voice_id",
+                            value={"value": "synthetic"},
+                            effect_boundary="immediate",
+                        )
+                    )
+        finally:
+            await db.dispose()
+
+    asyncio.run(run())
 
 
 if __name__ == "__main__":

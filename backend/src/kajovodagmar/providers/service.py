@@ -6,6 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from kajovodagmar.audit.service import AuditContext, AuditService
+from kajovodagmar.config import get_settings
 from kajovodagmar.db.models import EncryptedSecret, ModelCatalogEntry, ProviderConfiguration
 from kajovodagmar.errors import (
     CapabilityUnavailableError,
@@ -13,6 +14,7 @@ from kajovodagmar.errors import (
     DomainError,
     NotFoundError,
 )
+from kajovodagmar.providers.deterministic import DeterministicProvider
 from kajovodagmar.providers.model_roles import classify_model
 from kajovodagmar.providers.openai_compatible import OpenAICompatibleProvider
 from kajovodagmar.security.crypto import EncryptedValue, SecretCipher
@@ -174,7 +176,13 @@ class ProviderService:
 
     async def runtime(
         self, session: AsyncSession, row: ProviderConfiguration
-    ) -> OpenAICompatibleProvider:
+    ) -> OpenAICompatibleProvider | DeterministicProvider:
+        if row.provider_type == "deterministic":
+            if get_settings().environment != "test":
+                raise CapabilityUnavailableError(
+                    "provider", "Deterministický provider je povolen pouze v testovacím prostředí."
+                )
+            return DeterministicProvider()
         if not row.secret_id:
             raise CapabilityUnavailableError(
                 "provider", "Poskytovatel nemá uložený přístupový klíč."

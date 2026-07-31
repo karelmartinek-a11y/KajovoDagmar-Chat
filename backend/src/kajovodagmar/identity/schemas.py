@@ -17,16 +17,21 @@ class InitializeRequest(BaseModel):
 
     @field_validator("username")
     @classmethod
-    def fixed_username(cls, value: str) -> str:
-        if value != "Karmar78":
-            raise ValueError("Povolené uživatelské jméno je pouze Karmar78.")
-        return value
+    def valid_username(cls, value: str) -> str:
+        normalized = value.strip()
+        if (
+            not 3 <= len(normalized) <= 64
+            or not normalized.replace("-", "").replace("_", "").isalnum()
+            or (normalized != "Karmar78" and not normalized.startswith("acceptance-"))
+        ):
+            raise ValueError("Uživatelské jméno musí mít 3 až 64 bezpečných znaků.")
+        return normalized
 
     def validate_passwords(self) -> None:
         password = self.password.get_secret_value()
         if password != self.password_confirmation.get_secret_value():
             raise ValueError("Potvrzení hesla se neshoduje.")
-        errors = password_policy_errors(password)
+        errors = password_policy_errors(password, self.username)
         if errors:
             raise ValueError(" ".join(errors))
 

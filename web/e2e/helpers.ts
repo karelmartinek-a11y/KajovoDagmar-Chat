@@ -2,6 +2,7 @@ import type { Page } from '@playwright/test';
 
 export const password = process.env.E2E_PASSWORD ?? 'Bezpečná syntetická věta pro E2E 2026';
 export const initializationSecret = process.env.E2E_INITIALIZATION_SECRET ?? '';
+export const username = process.env.E2E_USERNAME ?? 'Karmar78';
 
 export async function ensureAuthenticated(page: Page): Promise<void> {
   await page.goto('/', { waitUntil: 'domcontentloaded' });
@@ -23,6 +24,7 @@ export async function ensureAuthenticated(page: Page): Promise<void> {
     if (!initializationSecret)
       throw new Error('E2E_INITIALIZATION_SECRET je povinné pro inicializaci.');
     await page.getByLabel('Inicializační tajemství').fill(initializationSecret);
+    await page.getByLabel('Uživatelské jméno').fill(username);
     await page.getByLabel('Jméno pro zobrazení').fill('E2E správce');
     await page.getByLabel('První heslo').fill(password);
     await page.getByLabel('Potvrzení hesla').fill(password);
