@@ -1,0 +1,93 @@
+name: autonomous-mobile-voice-acceptance
+on:
+  pull_request:
+    paths:
+      - 'web/src/**'
+      - 'web/e2e/**'
+      - 'backend/src/kajovodagmar/realtime/**'
+      - 'backend/src/kajovodagmar/providers/**'
+      - 'scripts/**'
+      - 'deployment/**'
+      - '.github/workflows/mobile-voice-acceptance.yml'
+  workflow_dispatch:
+    inputs:
+      commit_sha:
+        description: Commit to test
+        required: false
+        type: string
+      iterations:
+        description: Deterministic acceptance iterations
+        required: false
+        default: '5'
+        type: string
+      background_seconds:
+        description: Android background duration
+        required: false
+        default: '10'
+        type: string
+      run_live_provider_probe:
+        description: Run server-side provider probe (requires production workflow)
+        required: false
+        default: false
+        type: boolean
+      run_real_device_cloud:
+        description: Reserved for configured real-device cloud
+        required: false
+        default: false
+        type: boolean
+permissions:
+  contents: read
+concurrency:
+  group: autonomous-mobile-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  acceptance:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ inputs.commit_sha || github.sha }}
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with: {python-version: '3.12.13'}
+      - uses: astral-sh/setup-uv@d0d8abe699bfb85fec6de9f7adb5ae17292296ff # v6
+        with: {version: '0.12.0'}
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with: {node-version: '22.23.2'}
+      - run: npm install --global npm@10.9.8
+      - run: make bootstrap
+      - run: npx --prefix web playwright install --with-deps chromium
+      - name: Run isolated browser and Android lifecycle acceptance
+        uses: ReactiveCircus/android-emulator-runner@324029e2f414c084d8b15ba075288885e74aef9c # v2.34.0
+        env:
+          ITERATIONS: ${{ inputs.iterations || '5' }}
+          APP_IMAGE: kajovodagmar:acceptance
+          # WebKit is covered by the quality workflow's full release gate;
+          # this job reserves the runner for Chromium/Android lifecycle work.
+          RUN_WEBKIT: 'false'
+          ANDROID_EMULATOR_REQUIRED: 'true'
+          BACKGROUND_SECONDS: ${{ inputs.background_seconds || '10' }}
+        with:
+          api-level: 30
+          target: google_apis
+          arch: x86
+          profile: pixel_2
+          emulator-port: 5554
+          force-avd-creation: true
+          disable-linux-hw-accel: true
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none
+          # The hosted software-rendered emulator can drop the adb settings
+          # service immediately after boot. Animation settings are not part of
+          # the acceptance contract, so leave this optional runner step off.
+          disable-animations: false
+          script: |
+            npm --prefix web run build
+            docker build --tag kajovodagmar:acceptance --file deployment/Dockerfile .
+            docker build --tag kajovodagmar-postgres:17-pgbackrest-2.59.0 --file deployment/Dockerfile.postgres .
+            make autonomous-voice-acceptance
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: autonomous-mobile-voice-evidence
+          path: release/evidence/generated
+          if-no-files-found: warn

@@ -6,6 +6,7 @@ import { useAuth } from './AuthContext';
 export function InitializePage() {
   const { refresh } = useAuth();
   const [form, setForm] = useState({
+    username: 'Karmar78',
     secret: '',
     password: '',
     confirmation: '',
@@ -31,7 +32,7 @@ export function InitializePage() {
       await api('/auth/initialize', {
         method: 'POST',
         body: JSON.stringify({
-          username: 'Karmar78',
+          username: form.username,
           initialization_secret: form.secret,
           password: form.password,
           password_confirmation: form.confirmation,
@@ -66,7 +67,11 @@ export function InitializePage() {
         <form className="stack" onSubmit={(event) => void submit(event)}>
           <label>
             Uživatelské jméno
-            <input value="Karmar78" readOnly />
+            <input
+              value={form.username}
+              onChange={(e) => setForm({ ...form, username: e.target.value })}
+              required
+            />
           </label>
           <label>
             Inicializační tajemství

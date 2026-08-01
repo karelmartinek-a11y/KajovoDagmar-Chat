@@ -42,7 +42,11 @@ test.describe.serial('KájovoDagmar acceptance', () => {
     await page.locator('form.text-entry').evaluate((form) => {
       (form as HTMLFormElement).requestSubmit();
     });
-    await expect(page.getByRole('alert')).toContainText(/model|Nastavení|poskytovatel/i);
+    if (process.env.E2E_DETERMINISTIC_PROVIDER === 'true') {
+      await expect(page.getByText('Automatický hlasový test proběhl správně.')).toBeVisible();
+    } else {
+      await expect(page.getByRole('alert')).toContainText(/model|Nastavení|poskytovatel/i);
+    }
   });
 
   test('critical pages have no serious axe violations', async ({ page }) => {

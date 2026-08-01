@@ -28,7 +28,8 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 @router.get("/state")
 async def auth_state(request: Request, session: AsyncSession = Depends(db_session)):
     state = await request.app.state.identity.initialization_state(session)
-    return {"instance_state": state, "username": "Karmar78"}
+    account = await session.scalar(select(AdministratorAccount).limit(1))
+    return {"instance_state": state, "username": account.username if account else "Karmar78"}
 
 
 @router.post("/initialize", status_code=201)
@@ -64,7 +65,7 @@ async def login(
     response.set_cookie(
         "__Host-kajovodagmar_session",
         new.cookie_value,
-        secure=request.app.state.settings.environment == "production",
+        secure=request.app.state.settings.environment in {"test", "production"},
         httponly=True,
         samesite="strict",
         path="/",
@@ -90,7 +91,7 @@ async def logout(
     )
     response.delete_cookie(
         "__Host-kajovodagmar_session",
-        secure=request.app.state.settings.environment == "production",
+        secure=request.app.state.settings.environment in {"test", "production"},
         httponly=True,
         samesite="strict",
         path="/",

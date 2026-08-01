@@ -65,6 +65,80 @@ it('handles uninitialized state and a failed current-user lookup', async () => {
   view.unmount();
 });
 
+it('does not let an older state response overwrite a newer refresh', async () => {
+  let resolveInitialState: ((value: unknown) => void) | undefined;
+  const initialState = new Promise((resolve) => {
+    resolveInitialState = resolve;
+  });
+  let stateCalls = 0;
+  mocks.api.mockImplementation((path: string) => {
+    if (path === '/auth/state') {
+      stateCalls += 1;
+      return stateCalls === 1
+        ? initialState
+        : Promise.resolve({ instance_state: 'active', username: 'acceptance-race' });
+    }
+    if (path === '/auth/me')
+      return Promise.resolve({
+        id: 'account-race',
+        username: 'acceptance-race',
+        state: 'active',
+        profile: { display_name: 'Synthetic', email: null, email_state: 'not_set' },
+      });
+    return Promise.resolve(undefined);
+  });
+
+  render(
+    <AuthProvider>
+      <Probe />
+    </AuthProvider>,
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'refresh' }));
+  expect(await screen.findByText('acceptance-race')).toBeInTheDocument();
+  resolveInitialState?.({ instance_state: 'uninitialized', username: 'Karmar78' });
+  await waitFor(() => expect(screen.getByText('active')).toBeInTheDocument());
+  expect(screen.getByText('acceptance-race')).toBeInTheDocument();
+});
+
+it('does not let an older user response overwrite a newer refresh', async () => {
+  let resolveInitialUser: ((value: unknown) => void) | undefined;
+  const initialUser = new Promise((resolve) => {
+    resolveInitialUser = resolve;
+  });
+  let stateCalls = 0;
+  let userCalls = 0;
+  mocks.api.mockImplementation((path: string) => {
+    if (path === '/auth/state') {
+      stateCalls += 1;
+      return stateCalls === 1
+        ? Promise.resolve({ instance_state: 'active', username: 'acceptance-user-race' })
+        : Promise.resolve({ instance_state: 'uninitialized', username: 'Karmar78' });
+    }
+    if (path === '/auth/me') {
+      userCalls += 1;
+      return initialUser;
+    }
+    return Promise.resolve(undefined);
+  });
+
+  render(
+    <AuthProvider>
+      <Probe />
+    </AuthProvider>,
+  );
+  await waitFor(() => expect(userCalls).toBe(1));
+  fireEvent.click(screen.getByRole('button', { name: 'refresh' }));
+  await waitFor(() => expect(stateCalls).toBe(2));
+  resolveInitialUser?.({
+    id: 'account-user-race',
+    username: 'acceptance-user-race',
+    state: 'active',
+    profile: { display_name: 'Synthetic', email: null, email_state: 'not_set' },
+  });
+  await waitFor(() => expect(screen.getByText('uninitialized')).toBeInTheDocument());
+  expect(screen.getByText('anonymous')).toBeInTheDocument();
+});
+
 it('rejects useAuth outside its provider', () => {
   expect(() => render(<Probe />)).toThrow('AuthProvider není dostupný.');
 });

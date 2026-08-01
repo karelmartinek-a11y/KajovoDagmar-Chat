@@ -1,4 +1,12 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import type { PropsWithChildren } from 'react';
 import { api, setCsrfToken } from '../../api/client';
 import { endVoiceSession } from '../../audio/voiceSession';
@@ -21,16 +29,28 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 export function AuthProvider({ children }: PropsWithChildren) {
   const [instanceState, setInstanceState] = useState<InstanceState>('loading');
   const [user, setUser] = useState<User | null>(null);
+  const [username, setUsername] = useState('Karmar78');
   const [loading, setLoading] = useState(true);
+  const refreshSequence = useRef(0);
 
   const refresh = useCallback(async () => {
+    const sequence = ++refreshSequence.current;
     setLoading(true);
-    const state = await api<{ instance_state: 'uninitialized' | 'active' }>('/auth/state');
+    const state = await api<{
+      instance_state: 'uninitialized' | 'active';
+      username: string;
+    }>('/auth/state');
+    if (sequence !== refreshSequence.current) return;
+    setUsername(state.username);
     setInstanceState(state.instance_state);
     if (state.instance_state === 'active') {
       try {
-        setUser(await api<User>('/auth/me'));
+        const current = await api<User>('/auth/me');
+        if (sequence !== refreshSequence.current) return;
+        setUsername(current.username);
+        setUser(current);
       } catch {
+        if (sequence !== refreshSequence.current) return;
         setUser(null);
       }
     } else {
@@ -47,12 +67,12 @@ export function AuthProvider({ children }: PropsWithChildren) {
     async (password: string) => {
       const response = await api<{ csrf_token: string }>('/auth/login', {
         method: 'POST',
-        body: JSON.stringify({ username: 'Karmar78', password }),
+        body: JSON.stringify({ username, password }),
       });
       setCsrfToken(response.csrf_token);
       await refresh();
     },
-    [refresh],
+    [refresh, username],
   );
 
   const logout = useCallback(async () => {

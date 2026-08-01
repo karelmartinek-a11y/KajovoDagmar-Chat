@@ -79,7 +79,7 @@ class IdentityService:
         existing = await session.scalar(select(AdministratorAccount).limit(1))
         if existing is not None:
             raise ConflictError("Administrátorský účet již existuje.")
-        account = AdministratorAccount(username="Karmar78", state="active")
+        account = AdministratorAccount(username=request.username, state="active")
         session.add(account)
         await session.flush()
         session.add(
@@ -116,13 +116,13 @@ class IdentityService:
     ) -> AdministratorAccount:
         account = await session.scalar(
             select(AdministratorAccount)
-            .where(AdministratorAccount.username == "Karmar78")
+            .where(AdministratorAccount.username == username)
             .with_for_update()
         )
         generic = UnauthorizedError(
             "Přihlašovací údaje nejsou platné nebo je přístup dočasně omezen."
         )
-        if account is None or username != "Karmar78":
+        if account is None:
             await self.audit.append(
                 session,
                 context=audit_context,

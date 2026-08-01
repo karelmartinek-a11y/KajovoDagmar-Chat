@@ -196,6 +196,8 @@ ln -sfn "$release" "$ROOT/current.new"
 mv -Tf "$ROOT/current.new" "$ROOT/current"
 printf '%s\n' "$RELEASE_SHA" >"$ACTIVE_SHA_FILE.tmp"
 mv -f "$ACTIVE_SHA_FILE.tmp" "$ACTIVE_SHA_FILE"
+compose_for "$release" "$RELEASE_SHA" exec -T web kajovodagmar diagnostics-voice-live-probe \
+  >"$evidence/voice-live-probe.json"
 printf '{"event":"deployment.succeeded","sha":"%s","previous_sha":"%s","timestamp":"%s"}\n' \
   "$RELEASE_SHA" "$previous_sha" "$(date --iso-8601=seconds)" \
   >>"$SHARED/logs/deployment-audit.jsonl"
