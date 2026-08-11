@@ -46,7 +46,7 @@ Po spuštění nové verze workflow synchronizuje heslo účtu `Karmar78` s aktu
 hodnotou Environment secretu `PASS`. Tajemství jde do deploy procesu pouze přes
 standardní vstup, není součástí příkazové řádky ani logu. Synchronizace zruší
 existující přihlášené relace a obnoví případné omezení po chybných pokusech.
-Chybějící hodnota nebo heslo mimo politiku 14–128 znaků celý deploy zastaví.
+Chybějící hodnota nebo heslo mimo politiku 8–128 znaků celý deploy zastaví.
 
 Neurčité `latest`, `git pull`, checkout `main`, vypnutá TLS validace a globální
 Compose operace nejsou součástí postupu.

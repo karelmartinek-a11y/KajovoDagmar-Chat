@@ -260,7 +260,7 @@ async def test_password_change_reset_and_current_password(
     identity = service()
     account = SimpleNamespace(id=uuid4())
     ctx = context(account.id)
-    with pytest.raises(DomainError, match="alespoň 14"):
+    with pytest.raises(DomainError, match="alespoň 8"):
         await identity.change_password(
             cast(Any, Session()), account, "old", "short", ctx
         )
@@ -314,7 +314,7 @@ async def test_password_change_reset_and_current_password(
     token = await identity.issue_reset_token(cast(Any, reset_session), account)
     assert token
     assert reset_session.executed == 1
-    with pytest.raises(DomainError, match="alespoň 14"):
+    with pytest.raises(DomainError, match="alespoň 8"):
         await identity.complete_reset(cast(Any, Session()), token, "short", ctx)
     with pytest.raises(DomainError, match="již vypršel"):
         await identity.complete_reset(
@@ -365,7 +365,7 @@ async def test_deployment_password_synchronization() -> None:
     deployment_context = AuditContext(
         "deployment", correlation_id="github-actions-production"
     )
-    with pytest.raises(DomainError, match="alespoň 14"):
+    with pytest.raises(DomainError, match="alespoň 8"):
         await identity.synchronize_deployment_password(
             cast(Any, Session()), "short", deployment_context
         )

@@ -5612,7 +5612,7 @@
   {
     "id": "10.9",
     "title": "Požadavky na heslo",
-    "text": "Nové heslo musí mít nejméně 14 znaků a nejvýše 128 znaků, může obsahovat mezery a musí podporovat použití správce hesel i vložení ze schránky. Systém nevyžaduje samoúčelné kombinace znakových tříd, ale odmítne heslo shodné s uživatelským jménem, zjevně běžné heslo nebo hodnotu nalezenou v lokálním seznamu známých kompromitovaných hesel. Požadavky jsou zobrazeny před potvrzením.",
+    "text": "Nové heslo musí mít nejméně 8 znaků a nejvýše 128 znaků, může obsahovat mezery a musí podporovat použití správce hesel i vložení ze schránky. Systém nevyžaduje samoúčelné kombinace znakových tříd, ale odmítne heslo shodné s uživatelským jménem, zjevně běžné heslo nebo hodnotu nalezenou v lokálním seznamu známých kompromitovaných hesel. Požadavky jsou zobrazeny před potvrzením.",
     "implementation": [
       "backend/src/kajovodagmar/identity",
       "backend/src/kajovodagmar/security",
