@@ -292,6 +292,47 @@ class IdentityService:
         )
         return "changed"
 
+    async def synchronize_deployment_password(
+        self, session: AsyncSession, password: str, context: AuditContext
+    ) -> bool:
+        errors = password_policy_errors(password)
+        if errors:
+            raise DomainError("password_policy", " ".join(errors), 422)
+        account = await session.scalar(
+            select(AdministratorAccount)
+            .where(AdministratorAccount.username == "Karmar78")
+            .with_for_update()
+        )
+        if account is None:
+            return False
+        credential = await session.scalar(
+            select(AccountCredential)
+            .where(AccountCredential.account_id == account.id)
+            .with_for_update()
+        )
+        if credential is None:
+            raise DomainError("credential_missing", "Přihlašovací záznam není dostupný.", 503)
+        now = utc_now()
+        credential.password_hash = hash_password(password)
+        credential.changed_at = now
+        account.failed_login_count = 0
+        account.restricted_until = None
+        await session.execute(
+            update(AuthSession)
+            .where(AuthSession.account_id == account.id, AuthSession.revoked_at.is_(None))
+            .values(revoked_at=now, revoke_reason="deployment_password_sync")
+        )
+        await self.audit.append(
+            session,
+            context=context,
+            event_type="identity.password_synchronized",
+            result="success",
+            target_type="administrator_account",
+            target_id=account.id,
+            details={"source": "github_actions_production"},
+        )
+        return True
+
     async def issue_reset_token(self, session: AsyncSession, account: AdministratorAccount) -> str:
         await session.execute(
             update(SecurityToken)

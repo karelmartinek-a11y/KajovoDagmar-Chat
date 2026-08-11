@@ -5,11 +5,13 @@ import base64
 import hashlib
 import json
 import secrets
+import sys
 from pathlib import Path
 
 import typer
 from sqlalchemy import select
 
+from kajovodagmar.audit.service import AuditContext, AuditService
 from kajovodagmar.config import get_settings
 from kajovodagmar.db.models import (
     ApplicationSetting,
@@ -18,6 +20,7 @@ from kajovodagmar.db.models import (
     SystemInstance,
 )
 from kajovodagmar.db.session import Database
+from kajovodagmar.identity.service import IdentityService
 from kajovodagmar.security.crypto import generate_token, token_digest
 
 app = typer.Typer(help="Provozní CLI KájovoDagmar")
@@ -62,6 +65,36 @@ def bootstrap_instance() -> None:
                 )
                 session.add(row)
                 typer.echo(json.dumps({"state": "uninitialized", "created": True}))
+        finally:
+            await db.dispose()
+
+    asyncio.run(run())
+
+
+@app.command("synchronize-deployment-password")
+def synchronize_deployment_password() -> None:
+    password = sys.stdin.read()
+
+    async def run() -> None:
+        settings = get_settings()
+        db = Database(settings)
+        try:
+            async with db.session() as session:
+                synchronized = await IdentityService(
+                    AuditService()
+                ).synchronize_deployment_password(
+                    session,
+                    password,
+                    AuditContext("deployment", correlation_id="github-actions-production"),
+                )
+                typer.echo(
+                    json.dumps(
+                        {
+                            "synchronized": synchronized,
+                            "reason": None if synchronized else "account_not_initialized",
+                        }
+                    )
+                )
         finally:
             await db.dispose()
 

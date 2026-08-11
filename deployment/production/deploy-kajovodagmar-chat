@@ -23,6 +23,12 @@ if [[ ! $RELEASE_SHA =~ ^[0-9a-f]{40}$ ]]; then
   exit 64
 fi
 
+deployment_password_b64=$(</dev/stdin)
+if [[ -z $deployment_password_b64 || ! $deployment_password_b64 =~ ^[A-Za-z0-9+/]*={0,2}$ ]]; then
+  echo "A base64-encoded production password is required on standard input." >&2
+  exit 78
+fi
+
 exec 9>/run/lock/kajovodagmar-chat-deploy.lock
 if ! flock -n 9; then
   echo "Another KájovoDagmar-Chat deployment is active." >&2
@@ -181,6 +187,10 @@ compose_for "$release" "$RELEASE_SHA" run --rm --no-deps web alembic upgrade hea
 compose_for "$release" "$RELEASE_SHA" up -d --wait --no-build --remove-orphans
 compose_for "$release" "$RELEASE_SHA" exec -T web kajovodagmar bootstrap-instance \
   >"$evidence/bootstrap-instance.json"
+printf '%s' "$deployment_password_b64" | base64 --decode | \
+  compose_for "$release" "$RELEASE_SHA" exec -T web \
+    kajovodagmar synchronize-deployment-password \
+    >"$evidence/password-synchronization.json"
 
 curl --fail --silent --show-error --max-time 15 \
   "http://127.0.0.1:$LOOPBACK_PORT/api/v1/health/ready" \
@@ -198,6 +208,11 @@ printf '%s\n' "$RELEASE_SHA" >"$ACTIVE_SHA_FILE.tmp"
 mv -f "$ACTIVE_SHA_FILE.tmp" "$ACTIVE_SHA_FILE"
 compose_for "$release" "$RELEASE_SHA" exec -T web kajovodagmar diagnostics-voice-live-probe \
   >"$evidence/voice-live-probe.json"
+install -o root -g root -m 0750 \
+  "$release/deployment/production/deploy-kajovodagmar-chat" \
+  /usr/local/sbin/deploy-kajovodagmar-chat.next
+mv -f /usr/local/sbin/deploy-kajovodagmar-chat.next \
+  /usr/local/sbin/deploy-kajovodagmar-chat
 printf '{"event":"deployment.succeeded","sha":"%s","previous_sha":"%s","timestamp":"%s"}\n' \
   "$RELEASE_SHA" "$previous_sha" "$(date --iso-8601=seconds)" \
   >>"$SHARED/logs/deployment-audit.jsonl"

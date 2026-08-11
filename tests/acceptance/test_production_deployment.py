@@ -41,6 +41,8 @@ def test_deployment_requires_exact_sha_and_protected_ssh() -> None:
         "alembic upgrade head",
         "internal-health.json",
         "public-health.json",
+        "synchronize-deployment-password",
+        "password-synchronization.json",
         "restore_previous_release",
     ]:
         assert required_gate in deploy
@@ -57,6 +59,8 @@ def test_production_workflow_is_post_release_and_secret_scoped() -> None:
     assert "github.event_name != 'pull_request'" in job["if"]
     assert "${{ github.sha }}" in job["steps"][1]["run"]
     assert "StrictHostKeyChecking=yes" in job["steps"][1]["run"]
+    assert job["steps"][1]["env"]["PASS"] == "${{ secrets.PASS }}"
+    assert "base64 --wrap=0 | ssh" in job["steps"][1]["run"]
     assert workflow["concurrency"]["cancel-in-progress"] is False
 
 

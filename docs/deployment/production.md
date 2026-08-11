@@ -42,6 +42,12 @@ Workflow nasazuje pouze po úspěchu jobu `release-gate`, z GitHub Environment
 9. atomicky přepne `current` a zapíše aktivní SHA;
 10. při kritické chybě obnoví předchozí zachovaný release.
 
+Po spuštění nové verze workflow synchronizuje heslo účtu `Karmar78` s aktuální
+hodnotou Environment secretu `PASS`. Tajemství jde do deploy procesu pouze přes
+standardní vstup, není součástí příkazové řádky ani logu. Synchronizace zruší
+existující přihlášené relace a obnoví případné omezení po chybných pokusech.
+Chybějící hodnota nebo heslo mimo politiku 14–128 znaků celý deploy zastaví.
+
 Neurčité `latest`, `git pull`, checkout `main`, vypnutá TLS validace a globální
 Compose operace nejsou součástí postupu.
 
