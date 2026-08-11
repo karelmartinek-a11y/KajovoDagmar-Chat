@@ -80,8 +80,8 @@ class SecretCipher:
 
 def password_policy_errors(password: str, username: str = "Karmar78") -> list[str]:
     errors: list[str] = []
-    if len(password) < 14:
-        errors.append("Heslo musí mít alespoň 14 znaků.")
+    if len(password) < 8:
+        errors.append("Heslo musí mít alespoň 8 znaků.")
     if len(password) > 128:
         errors.append("Heslo může mít nejvýše 128 znaků.")
     normalized = password.casefold().strip()
