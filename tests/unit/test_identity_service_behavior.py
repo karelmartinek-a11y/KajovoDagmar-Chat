@@ -14,7 +14,7 @@ from kajovodagmar.audit.service import AuditContext
 from kajovodagmar.errors import ConflictError, DomainError, UnauthorizedError
 from kajovodagmar.identity.schemas import InitializeRequest
 from kajovodagmar.identity.service import IdentityService
-from kajovodagmar.security.crypto import token_digest
+from kajovodagmar.security.crypto import token_digest, verify_password
 from kajovodagmar.types import utc_now
 
 
@@ -357,6 +357,45 @@ async def test_password_change_reset_and_current_password(
         await identity.verify_current_password(
             cast(Any, Session(scalar_values=[credential])), account, "wrong"
         )
+
+
+@pytest.mark.asyncio
+async def test_deployment_password_synchronization() -> None:
+    identity = service()
+    deployment_context = AuditContext(
+        "deployment", correlation_id="github-actions-production"
+    )
+    with pytest.raises(DomainError, match="alespoň 14"):
+        await identity.synchronize_deployment_password(
+            cast(Any, Session()), "short", deployment_context
+        )
+    assert not await identity.synchronize_deployment_password(
+        cast(Any, Session(scalar_values=[None])),
+        "Deployment-password-2026",
+        deployment_context,
+    )
+    account = SimpleNamespace(
+        id=uuid4(), failed_login_count=4, restricted_until=utc_now()
+    )
+    with pytest.raises(DomainError, match="není dostupný"):
+        await identity.synchronize_deployment_password(
+            cast(Any, Session(scalar_values=[account, None])),
+            "Deployment-password-2026",
+            deployment_context,
+        )
+    credential = SimpleNamespace(password_hash="old-hash", changed_at=None)
+    synchronized_session = Session(scalar_values=[account, credential])
+    assert await identity.synchronize_deployment_password(
+        cast(Any, synchronized_session),
+        "Deployment-password-2026",
+        deployment_context,
+    )
+    assert verify_password(credential.password_hash, "Deployment-password-2026")[0]
+    assert credential.changed_at is not None
+    assert account.failed_login_count == 0
+    assert account.restricted_until is None
+    assert synchronized_session.executed == 1
+    identity.audit.append.assert_awaited_once()
 
 
 @pytest.mark.asyncio

@@ -92,11 +92,13 @@ jobs:
           ssh-keygen -y -f "$RUNNER_TEMP/kajovodagmar-chat-ssh/id_ed25519" >/dev/null
       - name: Deploy exact verified commit
         env:
+          PASS: ${{ secrets.PASS }}
           PROD_SSH_HOST: ${{ secrets.PROD_SSH_HOST }}
           PROD_SSH_PORT: ${{ secrets.PROD_SSH_PORT }}
           PROD_SSH_USER: ${{ secrets.PROD_SSH_USER }}
         run: |
-          ssh \
+          : "${PASS:?production environment secret PASS is required}"
+          printf '%s' "$PASS" | base64 --wrap=0 | ssh \
             -i "$RUNNER_TEMP/kajovodagmar-chat-ssh/id_ed25519" \
             -o BatchMode=yes \
             -o IdentitiesOnly=yes \
