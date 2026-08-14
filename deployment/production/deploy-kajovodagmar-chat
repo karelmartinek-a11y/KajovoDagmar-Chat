@@ -65,6 +65,7 @@ release=$RELEASES/$RELEASE_SHA
 evidence=$SHARED/logs/releases/$RELEASE_SHA
 app_image=kajovodagmar-chat:$RELEASE_SHA
 deployment_succeeded=false
+current_stage=initialization
 
 compose_for() {
   local release_directory=$1
@@ -102,6 +103,11 @@ restore_previous_release() {
 on_exit() {
   local status=$?
   if (( status != 0 )) && [[ $deployment_succeeded != true ]]; then
+    echo "Deployment failed during stage: $current_stage" >&2
+    if [[ -s $evidence/password-synchronization.json ]]; then
+      jq -c '{synchronized, reason, message}' \
+        "$evidence/password-synchronization.json" >&2 || true
+    fi
     set +e
     restore_previous_release
     rollback_status=$?
@@ -183,22 +189,33 @@ compose_for "$release" "$RELEASE_SHA" exec -T --user postgres db \
   pgbackrest --stanza=kajovodagmar info --output=json \
   >"$evidence/pre-migration-backup.json"
 
+current_stage=database_migration
 compose_for "$release" "$RELEASE_SHA" run --rm --no-deps web alembic upgrade head
+current_stage=application_start
 compose_for "$release" "$RELEASE_SHA" up -d --wait --no-build --remove-orphans
+current_stage=instance_bootstrap
 compose_for "$release" "$RELEASE_SHA" exec -T web kajovodagmar bootstrap-instance \
   >"$evidence/bootstrap-instance.json"
+current_stage=password_synchronization
 printf '%s' "$deployment_password_b64" | base64 --decode | \
   compose_for "$release" "$RELEASE_SHA" exec -T web \
     kajovodagmar synchronize-deployment-password \
     >"$evidence/password-synchronization.json"
+jq -e '.synchronized == true' "$evidence/password-synchronization.json" >/dev/null
 
+current_stage=internal_health
 curl --fail --silent --show-error --max-time 15 \
+  --retry 5 --retry-all-errors --retry-delay 2 --connect-timeout 5 \
   "http://127.0.0.1:$LOOPBACK_PORT/api/v1/health/ready" \
   >"$evidence/internal-health.json"
+current_stage=public_health
 curl --fail --silent --show-error --max-time 20 \
+  --retry 5 --retry-all-errors --retry-delay 2 --connect-timeout 5 \
   "https://$DOMAIN/api/v1/health/ready" >"$evidence/public-health.json"
+current_stage=public_ui
 curl --fail --silent --show-error --max-time 20 "https://$DOMAIN/" |
   grep -F "KájovoDagmar" >"$evidence/ui-branding.txt"
+current_stage=unrelated_service_health
 curl --fail --silent --show-error --max-time 20 \
   https://dagmar.hcasc.cz/ >/dev/null
 
@@ -206,8 +223,10 @@ ln -sfn "$release" "$ROOT/current.new"
 mv -Tf "$ROOT/current.new" "$ROOT/current"
 printf '%s\n' "$RELEASE_SHA" >"$ACTIVE_SHA_FILE.tmp"
 mv -f "$ACTIVE_SHA_FILE.tmp" "$ACTIVE_SHA_FILE"
+current_stage=voice_provider_probe
 compose_for "$release" "$RELEASE_SHA" exec -T web kajovodagmar diagnostics-voice-live-probe \
   >"$evidence/voice-live-probe.json"
+current_stage=deploy_script_install
 install -o root -g root -m 0750 \
   "$release/deployment/production/deploy-kajovodagmar-chat" \
   /usr/local/sbin/deploy-kajovodagmar-chat.next

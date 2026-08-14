@@ -149,6 +149,12 @@ async def test_text_turn_empty_success_domain_error_and_cancellation(
         cast(Any, websocket), app, state, "Dotaz", "idempotency-key-0001", ack
     )
     synthesis.assert_awaited_once()
+    emitted = [json.loads(call.args[0]) for call in websocket.send_text.await_args_list]
+    assert any(
+        event["type"] == "transcript.final"
+        and event["payload"] == {"text": "Dotaz", "message_id": str(message.id)}
+        for event in emitted
+    )
 
     app.state.orchestration.answer.side_effect = DomainError(
         "provider", "Není model.", 503

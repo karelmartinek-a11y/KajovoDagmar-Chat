@@ -43,6 +43,10 @@ def test_deployment_requires_exact_sha_and_protected_ssh() -> None:
         "public-health.json",
         "synchronize-deployment-password",
         "password-synchronization.json",
+        "password_synchronization",
+        "Deployment failed during stage",
+        ".synchronized == true",
+        "--retry-all-errors",
         "restore_previous_release",
     ]:
         assert required_gate in deploy
@@ -57,10 +61,23 @@ def test_production_workflow_is_post_release_and_secret_scoped() -> None:
         "url": "https://chat.hcasc.cz",
     }
     assert "github.event_name != 'pull_request'" in job["if"]
-    assert "${{ github.sha }}" in job["steps"][1]["run"]
-    assert "StrictHostKeyChecking=yes" in job["steps"][1]["run"]
-    assert job["steps"][1]["env"]["PASS"] == "${{ secrets.PASS }}"
-    assert "base64 --wrap=0 | ssh" in job["steps"][1]["run"]
+    deploy_step = next(
+        step
+        for step in job["steps"]
+        if step.get("name") == "Deploy exact verified commit"
+    )
+    assert "${{ github.sha }}" in deploy_step["run"]
+    assert "StrictHostKeyChecking=yes" in deploy_step["run"]
+    assert deploy_step["env"]["PASS"] == "${{ secrets.PASS }}"
+    assert "base64 --wrap=0 | ssh" in deploy_step["run"]
+    voice_step = next(
+        step
+        for step in job["steps"]
+        if step.get("name") == "Verify production login and voice chat"
+    )
+    assert voice_step["env"]["E2E_PASSWORD"] == "${{ secrets.PASS }}"
+    assert voice_step["env"]["E2E_BASE_URL"] == "https://chat.hcasc.cz"
+    assert "production-voice.spec.ts" in voice_step["run"]
     assert workflow["concurrency"]["cancel-in-progress"] is False
 
 

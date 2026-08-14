@@ -80,6 +80,12 @@ jobs:
       name: production
       url: https://chat.hcasc.cz
     steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with: {node-version: '22.23.2', cache: npm, cache-dependency-path: web/package-lock.json}
+      - run: npm install --global npm@10.9.8
+      - run: npm --prefix web ci --ignore-scripts
+      - run: npx --prefix web playwright install --with-deps chromium
       - name: Configure isolated production SSH identity
         env:
           PROD_SSH_PRIVATE_KEY: ${{ secrets.PROD_SSH_PRIVATE_KEY }}
@@ -107,6 +113,13 @@ jobs:
             -p "$PROD_SSH_PORT" \
             "$PROD_SSH_USER@$PROD_SSH_HOST" \
             "sudo -n /usr/local/sbin/deploy-kajovodagmar-chat ${{ github.sha }}"
+      - name: Verify production login and voice chat
+        env:
+          E2E_BASE_URL: https://chat.hcasc.cz
+          E2E_USERNAME: Karmar78
+          E2E_PASSWORD: ${{ secrets.PASS }}
+          E2E_PRODUCTION_VOICE: 'true'
+        run: npm --prefix web run e2e -- e2e/production-voice.spec.ts --project=desktop-chromium
       - name: Remove ephemeral SSH material
         if: always()
         run: rm -f "$RUNNER_TEMP/kajovodagmar-chat-ssh/id_ed25519"

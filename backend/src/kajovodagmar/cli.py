@@ -20,6 +20,7 @@ from kajovodagmar.db.models import (
     SystemInstance,
 )
 from kajovodagmar.db.session import Database
+from kajovodagmar.errors import DomainError
 from kajovodagmar.identity.service import IdentityService
 from kajovodagmar.security.crypto import generate_token, token_digest
 
@@ -98,7 +99,23 @@ def synchronize_deployment_password() -> None:
         finally:
             await db.dispose()
 
-    asyncio.run(run())
+    try:
+        asyncio.run(run())
+    except DomainError as exc:
+        # This command is called with stdout redirected to protected deployment
+        # evidence.  Return a machine-readable, secret-free failure so CI can
+        # identify the failed gate without printing the supplied password.
+        typer.echo(
+            json.dumps(
+                {
+                    "synchronized": False,
+                    "reason": exc.code,
+                    "message": exc.message,
+                },
+                ensure_ascii=False,
+            )
+        )
+        raise typer.Exit(code=1) from exc
 
 
 @app.command("integrity-check")
