@@ -647,6 +647,14 @@ async def process_text_turn(
                 ),
                 AuditContext("administrator", state.account_id, correlation_id=idempotency_key),
             )
+            if input_mode == "text":
+                await emit(
+                    websocket,
+                    state,
+                    "transcript.final",
+                    {"text": text, "message_id": str(message.id)},
+                    ack_for,
+                )
             result = await app.state.orchestration.answer(
                 db,
                 state.account_id,
