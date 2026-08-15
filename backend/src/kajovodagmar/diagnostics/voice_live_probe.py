@@ -18,20 +18,6 @@ from kajovodagmar.providers.service import ProviderService
 from kajovodagmar.security.crypto import SecretCipher
 
 
-def _pcm16_silence() -> bytes:
-    """Return a short raw PCM probe payload.
-
-    ``AIProvider.transcribe`` owns WAV framing: every provider is given raw
-    24 kHz PCM16 samples and the OpenAI-compatible transport wraps those
-    samples in a WAV container.  Passing a pre-built WAV here would create a
-    WAV-inside-WAV payload and make a valid live transcription endpoint look
-    unavailable.
-    """
-    # A full second is deliberately long enough for live STT providers that
-    # reject extremely short recordings before they reach transcription.
-    return b"\x00\x00" * 24_000
-
-
 async def run_probe() -> dict[str, Any]:  # pragma: no cover - exercised as a container probe
     settings = get_settings()
     db = Database(settings)
@@ -106,31 +92,13 @@ async def run_probe() -> dict[str, Any]:  # pragma: no cover - exercised as a co
                 "duration_ms": round((time.perf_counter() - started) * 1000),
             }
 
-            provider, model = selected["transcription_model"]
-            runtime = await providers.runtime(session, provider)
-            started = time.perf_counter()
-            transcript = await runtime.transcribe(
-                _pcm16_silence(), model=model.external_id, language="cs"
-            )
-            # Silence legitimately transcribes to an empty string.  A live
-            # capability probe verifies the endpoint, transport and response
-            # contract, not semantic recognition of audio that contains no
-            # speech.
-            if not isinstance(transcript.text, str):
-                raise RuntimeError("transcription returned an invalid text response")
-            result["checks"]["transcription"] = {
-                "status": "pass",
-                "model": model.external_id,
-                "provider_request_id": transcript.provider_response_id,
-                "duration_ms": round((time.perf_counter() - started) * 1000),
-            }
-
             provider, model = selected["speech_model"]
             runtime = await providers.runtime(session, provider)
             started = time.perf_counter()
+            speech_probe_text = "Automatický test hlasové syntézy."
             pcm_parts: list[bytes] = []
             async for chunk in runtime.synthesize(
-                "Automatický test hlasové syntézy.",
+                speech_probe_text,
                 model=model.external_id,
                 voice="alloy",
                 language="cs",
@@ -143,6 +111,22 @@ async def run_probe() -> dict[str, Any]:  # pragma: no cover - exercised as a co
                 "status": "pass",
                 "model": model.external_id,
                 "pcm_bytes": len(pcm),
+                "duration_ms": round((time.perf_counter() - started) * 1000),
+            }
+
+            provider, model = selected["transcription_model"]
+            runtime = await providers.runtime(session, provider)
+            started = time.perf_counter()
+            # ``synthesize`` yields raw 24 kHz PCM16.  ``transcribe`` owns
+            # WAV framing, so this is a valid end-to-end audio payload rather
+            # than a WAV-inside-WAV input or an ambiguous silent recording.
+            transcript = await runtime.transcribe(pcm, model=model.external_id, language="cs")
+            if not transcript.text.strip():
+                raise RuntimeError("transcription returned empty text for synthesized speech")
+            result["checks"]["transcription"] = {
+                "status": "pass",
+                "model": model.external_id,
+                "provider_request_id": transcript.provider_response_id,
                 "duration_ms": round((time.perf_counter() - started) * 1000),
             }
 
