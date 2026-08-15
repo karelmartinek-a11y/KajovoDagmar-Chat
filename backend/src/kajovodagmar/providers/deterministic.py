@@ -23,17 +23,15 @@ class DeterministicProvider(AIProvider):
             ProviderModel(
                 self._PREFIX + "conversation",
                 "Synthetic conversation",
-                frozenset({"responses", "structured_outputs", "chat"}),
+                {"responses": True, "structured_outputs": True, "chat": True},
             ),
             ProviderModel(
                 self._PREFIX + "transcription",
                 "Synthetic transcription",
-                frozenset({"transcriptions"}),
+                {"transcriptions": True},
             ),
-            ProviderModel(self._PREFIX + "speech", "Synthetic speech", frozenset({"speech"})),
-            ProviderModel(
-                self._PREFIX + "embedding", "Synthetic embeddings", frozenset({"embeddings"})
-            ),
+            ProviderModel(self._PREFIX + "speech", "Synthetic speech", {"speech": True}),
+            ProviderModel(self._PREFIX + "embedding", "Synthetic embeddings", {"embeddings": True}),
         ]
 
     async def chat(self, request: ChatRequest) -> ChatResult:
@@ -79,6 +77,6 @@ class DeterministicProvider(AIProvider):
         for text in texts:
             digest = sha256(text.encode("utf-8")).digest()
             vectors.append(
-                [((digest[index % len(digest)] / 255.0) * 2.0) - 1.0 for index in range(3072)]
+                [((digest[index % len(digest)] / 255.0) * 2.0) - 1.0 for index in range(1536)]
             )
         return vectors

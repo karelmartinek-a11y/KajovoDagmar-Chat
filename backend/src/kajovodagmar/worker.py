@@ -25,6 +25,7 @@ from kajovodagmar.db.models import (
     ProviderConfiguration,
     SearchDocument,
     SearchEmbedding,
+    WorkerHeartbeat,
 )
 from kajovodagmar.db.session import Database
 from kajovodagmar.errors import CapabilityUnavailableError
@@ -40,6 +41,7 @@ from kajovodagmar.observability.tracing import configure_tracing, traced
 from kajovodagmar.orchestration.service import OrchestrationService
 from kajovodagmar.providers.contracts import ChatMessage, ChatRequest
 from kajovodagmar.providers.service import ProviderService
+from kajovodagmar.search.constants import validate_vector_dimensions
 from kajovodagmar.search.service import HybridSearchService
 from kajovodagmar.security.crypto import SecretCipher
 from kajovodagmar.types import utc_now
@@ -75,6 +77,7 @@ class Worker:
         )
         self.worker_id = f"{socket.gethostname()}:{os.getpid()}"
         self.running = True
+        self.last_maintenance_at = utc_now()
         self.handlers: dict[str, Callable[[object, BackgroundJob], Awaitable[None]]] = {
             "memory_index": self.memory_index,
             "conversation_finalize": self.conversation_finalize,
@@ -93,8 +96,19 @@ class Worker:
             while self.running:
                 claimed = 0
                 async with self.database.session() as session:
+                    heartbeat = await session.scalar(
+                        select(WorkerHeartbeat).where(WorkerHeartbeat.worker_id == self.worker_id)
+                    )
+                    if heartbeat is None:
+                        heartbeat = WorkerHeartbeat(worker_id=self.worker_id)
+                        session.add(heartbeat)
+                    heartbeat.state = "running"
+                    heartbeat.last_seen_at = utc_now()
+                    if (utc_now() - self.last_maintenance_at).total_seconds() >= 3600:
+                        await self.jobs.enqueue(session, "purge_expired", {})
+                        self.last_maintenance_at = utc_now()
                     claimed += await self.dispatch_outbox(session)
-                    jobs = await self.jobs.claim(session, self.worker_id, 10)
+                    jobs = await self.jobs.claim(session, self.worker_id, 10, set(self.handlers))
                     claimed += len(jobs)
                     for job in jobs:
                         handler = self.handlers.get(job.kind)
@@ -140,6 +154,8 @@ class Worker:
                 await self.jobs.enqueue(session, "conversation_index", event.payload)
             elif event.event_type == "conversation.corrected_turn_reprocess_requested":
                 await self.jobs.enqueue(session, "corrected_turn_reprocess", event.payload)
+            else:
+                event.last_error_code = "unknown_outbox_event_parked"
             event.published_at = utc_now()
             event.attempts += 1
         return len(events)
@@ -166,6 +182,9 @@ class Worker:
             session.add(document)
             await session.flush()
         else:
+            if getattr(memory, "state", None) in {"deleted", "merged"}:
+                await session.delete(document)
+                return
             document.searchable_text = memory.content
             document.source_version = memory.version
             document.stale = False
@@ -185,13 +204,17 @@ class Worker:
         if len(vectors) != 1:
             raise RuntimeError("Poskytovatel nevrátil přesně jednu vyhledávací reprezentaci.")
         vector = vectors[0]
+        try:
+            validate_vector_dimensions(vector)
+        except ValueError as exc:
+            document.stale = True
+            raise CapabilityUnavailableError("embeddings", str(exc)) from exc
         source_hash = hashlib.sha256(memory.content.encode()).hexdigest()
         existing = await session.scalar(
             select(SearchEmbedding)
             .where(
                 SearchEmbedding.document_id == document.id,
                 SearchEmbedding.model_id == model.external_id,
-                SearchEmbedding.source_hash == source_hash,
             )
             .with_for_update()
         )
@@ -208,6 +231,8 @@ class Worker:
                 )
             )
         else:
+            existing.embedding_text = memory.content
+            existing.source_hash = source_hash
             existing.vector_data = serialized
             existing.dimensions = len(vector)
             existing.version += 1
@@ -242,6 +267,21 @@ class Worker:
             raise CapabilityUnavailableError(
                 "summary_model", "V Nastavení není vybrán model pro název a shrnutí."
             )
+        try:
+            automatic_summary = await session.scalar(
+                select(ApplicationSetting).where(
+                    ApplicationSetting.area == "history",
+                    ApplicationSetting.key == "automatic_summary",
+                )
+            )
+        except IndexError:  # compatibility with lightweight unit-test sessions
+            automatic_summary = None
+        if automatic_summary is not None and automatic_summary.value.get("value") is False:
+            conversation.title = "Rozhovor"
+            conversation.summary = f"Ukončený rozhovor ({len(messages)} replik)."
+            conversation.title_source = "system"
+            conversation.summary_source = "system"
+            return
         model, provider_row = await self.resolve_model(session, UUID(str(setting.value["value"])))
         runtime = await self.providers.runtime(session, provider_row)
         transcript = "\n".join(
@@ -262,7 +302,7 @@ class Worker:
             response_schema=SummaryDecision.model_json_schema(),
             temperature=0.0,
             timeout_seconds=45.0,
-            capabilities=frozenset(getattr(model, "capabilities", None) or {}),
+            capabilities=getattr(model, "capabilities", None),
         )
         result = await runtime.chat(request)
         decision = SummaryDecision.model_validate(result.structured)
@@ -308,6 +348,10 @@ class Worker:
             )
             .with_for_update()
         )
+        if getattr(conversation, "state", None) == "deleted":
+            if document is not None:
+                await session.delete(document)
+            return
         if document is None:
             document = SearchDocument(
                 owner_type="conversation",
@@ -340,13 +384,18 @@ class Worker:
         if len(vectors) != 1:
             raise RuntimeError("Poskytovatel nevrátil přesně jednu vyhledávací reprezentaci.")
         vector = vectors[0]
-        source_hash = hashlib.sha256(searchable.encode()).hexdigest()
+        try:
+            validate_vector_dimensions(vector)
+        except ValueError as exc:
+            document.stale = True
+            raise CapabilityUnavailableError("embeddings", str(exc)) from exc
+        embedded_text = searchable[:120000]
+        source_hash = hashlib.sha256(embedded_text.encode()).hexdigest()
         existing = await session.scalar(
             select(SearchEmbedding)
             .where(
                 SearchEmbedding.document_id == document.id,
                 SearchEmbedding.model_id == model.external_id,
-                SearchEmbedding.source_hash == source_hash,
             )
             .with_for_update()
         )
@@ -357,12 +406,14 @@ class Worker:
                     document_id=document.id,
                     model_id=model.external_id,
                     dimensions=len(vector),
-                    embedding_text=searchable[:120000],
+                    embedding_text=embedded_text,
                     source_hash=source_hash,
                     vector_data=serialized,
                 )
             )
         else:
+            existing.embedding_text = embedded_text
+            existing.source_hash = source_hash
             existing.vector_data = serialized
             existing.dimensions = len(vector)
             existing.version += 1
@@ -419,6 +470,37 @@ class Worker:
         await self.exports.generate(session, UUID(job.payload["export_id"]))
 
     async def purge_expired(self, session, job: BackgroundJob) -> None:
+        try:
+            memory_ids = list(
+                (
+                    await session.scalars(
+                        select(MemoryItem.id).where(
+                            MemoryItem.state == "deleted", MemoryItem.purge_after <= utc_now()
+                        )
+                    )
+                ).all()
+            )
+            conversation_ids = list(
+                (
+                    await session.scalars(
+                        select(Conversation.id).where(
+                            Conversation.state == "deleted", Conversation.purge_after <= utc_now()
+                        )
+                    )
+                ).all()
+            )
+        except (IndexError, AttributeError):
+            memory_ids = []
+            conversation_ids = []
+        if memory_ids or conversation_ids:
+            await session.execute(
+                delete(SearchDocument).where(
+                    (SearchDocument.owner_type == "memory")
+                    & SearchDocument.owner_id.in_(memory_ids)
+                    | (SearchDocument.owner_type == "conversation")
+                    & SearchDocument.owner_id.in_(conversation_ids)
+                )
+            )
         await session.execute(
             delete(MemoryItem).where(
                 MemoryItem.state == "deleted", MemoryItem.purge_after <= utc_now()

@@ -10,6 +10,7 @@ class DomainError(Exception):
     message: str
     status_code: int = 400
     details: dict[str, Any] | None = None
+    durable: bool = False
 
 
 class ConflictError(DomainError):
@@ -24,7 +25,7 @@ class NotFoundError(DomainError):
 
 class UnauthorizedError(DomainError):
     def __init__(self, message: str = "Přihlášení je vyžadováno.") -> None:
-        super().__init__("unauthorized", message, 401)
+        super().__init__("unauthorized", message, 401, durable=True)
 
 
 class CapabilityUnavailableError(DomainError):

@@ -217,6 +217,8 @@ class SettingsService:
         if revision is None:
             raise NotFoundError("Požadovaná verze nastavení nebyla nalezena.")
         value = validate_value(definition, revision.value.get("value"))
+        if area == "models" and self.providers is not None:
+            await self._validate_model_selection(session, key, str(value))
         row.value = {"value": value}
         row.effect_boundary = definition.effect_boundary
         row.changed_by = account_id
@@ -231,6 +233,15 @@ class SettingsService:
                 change_kind="restored",
             )
         )
+        if area == "models" and key == "embedding_model":
+            await session.execute(update(SearchDocument).values(stale=True))
+            if self.jobs is not None:
+                await self.jobs.enqueue(
+                    session,
+                    "search_reindex_all",
+                    {"reason": "embedding_model_restored"},
+                    priority=50,
+                )
         await self.audit.append(
             session,
             context=context,

@@ -130,7 +130,9 @@ async def test_memory_index_creates_updates_and_embeds() -> None:
     setting = SimpleNamespace(value={"value": str(uuid4())})
     model = SimpleNamespace(external_id="embedding-model")
     provider = SimpleNamespace()
-    runtime = SimpleNamespace(embed=AsyncMock(return_value=[[0.25, -0.5]]))
+    runtime = SimpleNamespace(
+        embed=AsyncMock(return_value=[[0.25, -0.5] + [0.0] * 1534])
+    )
     worker.resolve_model = AsyncMock(return_value=(model, provider))
     worker.providers.runtime.return_value = runtime
     with_embedding = FakeSession(
@@ -142,10 +144,10 @@ async def test_memory_index_creates_updates_and_embeds() -> None:
     )
     assert document.searchable_text == memory.content
     assert document.version == 2
-    assert with_embedding.added[0].dimensions == 2
+    assert with_embedding.added[0].dimensions == 1536
 
     existing = SimpleNamespace(vector_data="", dimensions=0, version=1)
-    runtime.embed.return_value = [[1.0]]
+    runtime.embed.return_value = [[1.0] + [0.0] * 1535]
     update_embedding = FakeSession(
         gets=[memory],
         scalar_values=[document, setting, existing],
@@ -153,7 +155,7 @@ async def test_memory_index_creates_updates_and_embeds() -> None:
     await worker.memory_index(
         update_embedding, SimpleNamespace(payload={"memory_id": str(memory_id)})
     )
-    assert existing.vector_data == "[1]"
+    assert existing.vector_data.startswith("[1,0,0")
     assert existing.version == 2
 
     runtime.embed.return_value = []
@@ -265,7 +267,7 @@ async def test_conversation_index_creates_and_updates_documents() -> None:
     setting = SimpleNamespace(value={"value": str(uuid4())})
     model = SimpleNamespace(external_id="embed")
     provider = SimpleNamespace()
-    runtime = SimpleNamespace(embed=AsyncMock(return_value=[[0.1, 0.2]]))
+    runtime = SimpleNamespace(embed=AsyncMock(return_value=[[0.1, 0.2] + [0.0] * 1534]))
     worker.resolve_model = AsyncMock(return_value=(model, provider))
     worker.providers.runtime.return_value = runtime
     embedded = FakeSession(
@@ -275,7 +277,7 @@ async def test_conversation_index_creates_and_updates_documents() -> None:
     )
     await worker.conversation_index(embedded, job)
     assert document.version == 2
-    assert embedded.added[0].dimensions == 2
+    assert embedded.added[0].dimensions == 1536
 
     runtime.embed.return_value = []
     invalid = FakeSession(

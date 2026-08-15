@@ -53,6 +53,16 @@ class SystemInstance(Base, UUIDPrimaryKeyMixin, TimestampVersionMixin):
     schema_version: Mapped[str] = mapped_column(String(32), nullable=False, default="1.0.0")
 
 
+class WorkerHeartbeat(Base, UUIDPrimaryKeyMixin, TimestampVersionMixin):
+    __tablename__ = "worker_heartbeat"
+    worker_id: Mapped[str] = mapped_column(String(200), unique=True, nullable=False)
+    state: Mapped[str] = mapped_column(String(32), nullable=False, default="running")
+    last_seen_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    details: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
+
+
 class AdministratorAccount(Base, UUIDPrimaryKeyMixin, TimestampVersionMixin):
     __tablename__ = "administrator_account"
     username: Mapped[str] = mapped_column(
@@ -255,6 +265,7 @@ class ConversationMessage(Base, UUIDPrimaryKeyMixin, TimestampVersionMixin):
     input_mode: Mapped[str] = mapped_column(String(24), nullable=False)
     status: Mapped[str] = mapped_column(String(40), nullable=False, default="final")
     idempotency_key: Mapped[str] = mapped_column(String(128), nullable=False)
+    request_hash: Mapped[str | None] = mapped_column(String(64))
     provider_message_id: Mapped[str | None] = mapped_column(String(200))
     response_run_id: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True))
     interrupted: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
@@ -505,7 +516,7 @@ class SearchEmbedding(Base, UUIDPrimaryKeyMixin, TimestampVersionMixin):
     # Alembic converts this to vector(1536). Text keeps metadata importable
     # without requiring the pgvector Python package.
     vector_data: Mapped[str] = mapped_column(Text, nullable=False)
-    __table_args__ = (UniqueConstraint("document_id", "model_id", "source_hash"),)
+    __table_args__ = (UniqueConstraint("document_id", "model_id"),)
 
 
 class IdempotencyRecord(Base, UUIDPrimaryKeyMixin):

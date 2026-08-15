@@ -34,6 +34,10 @@ export function HistoryPage() {
   } | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [editing, setEditing] = useState(false);
+  const [editTitle, setEditTitle] = useState('');
+  const [editSummary, setEditSummary] = useState('');
+  const [deleteArmed, setDeleteArmed] = useState(false);
 
   async function search(event?: FormEvent) {
     event?.preventDefault();
@@ -74,34 +78,42 @@ export function HistoryPage() {
 
   async function saveMetadata() {
     if (!selected) return;
-    const title = window.prompt('Název konverzace', selected.conversation.title ?? '')?.trim();
-    if (!title) return;
-    const summary = window
-      .prompt('Shrnutí konverzace', selected.conversation.summary ?? '')
-      ?.trim();
-    if (!summary) return;
-    const updated = await api<Conversation>(`/history/${selected.conversation.id}/metadata`, {
-      method: 'PUT',
-      body: JSON.stringify({ expected_version: selected.conversation.version, title, summary }),
-    });
-    setSelected({ ...selected, conversation: updated });
-    await search();
+    setError(null);
+    try {
+      const updated = await api<Conversation>(`/history/${selected.conversation.id}/metadata`, {
+        method: 'PUT',
+        body: JSON.stringify({
+          expected_version: selected.conversation.version,
+          title: editTitle.trim(),
+          summary: editSummary.trim(),
+        }),
+      });
+      setSelected({ ...selected, conversation: updated });
+      setEditing(false);
+      await search();
+    } catch (reason) {
+      setError(reason instanceof ApiError ? reason.message : 'Metadata se nepodařilo uložit.');
+    }
   }
 
   async function remove() {
-    if (
-      !selected ||
-      !window.confirm(
-        `Odstranit konverzaci „${selected.conversation.title ?? 'Bez názvu'}“? Paměťové položky zůstanou zachovány, ale jejich historický zdroj může být po definitivním odstranění nedostupný.`,
-      )
-    )
+    if (!selected) return;
+    if (!deleteArmed) {
+      setDeleteArmed(true);
       return;
-    const updated = await api<Conversation>(`/history/${selected.conversation.id}`, {
-      method: 'DELETE',
-      body: JSON.stringify({ expected_version: selected.conversation.version }),
-    });
-    setSelected({ ...selected, conversation: updated });
-    await search();
+    }
+    setError(null);
+    try {
+      const updated = await api<Conversation>(`/history/${selected.conversation.id}`, {
+        method: 'DELETE',
+        body: JSON.stringify({ expected_version: selected.conversation.version }),
+      });
+      setSelected({ ...selected, conversation: updated });
+      setDeleteArmed(false);
+      await search();
+    } catch (reason) {
+      setError(reason instanceof ApiError ? reason.message : 'Konverzaci se nepodařilo odstranit.');
+    }
   }
 
   return (
@@ -163,9 +175,52 @@ export function HistoryPage() {
             <>
               <header>
                 <h2>{selected.conversation.title ?? 'Rozhovor bez názvu'}</h2>
-                <p>{selected.conversation.summary ?? 'Shrnutí zatím není dostupné.'}</p>
+                {editing ? (
+                  <form
+                    className="stack"
+                    onSubmit={(event) => {
+                      event.preventDefault();
+                      void saveMetadata();
+                    }}
+                  >
+                    <label>
+                      Název
+                      <input
+                        value={editTitle}
+                        onChange={(event) => setEditTitle(event.target.value)}
+                        required
+                      />
+                    </label>
+                    <label>
+                      Shrnutí
+                      <textarea
+                        value={editSummary}
+                        onChange={(event) => setEditSummary(event.target.value)}
+                        required
+                      />
+                    </label>
+                    <div className="row">
+                      <button className="primary">Uložit</button>
+                      <button type="button" onClick={() => setEditing(false)}>
+                        Zrušit
+                      </button>
+                    </div>
+                  </form>
+                ) : (
+                  <p>{selected.conversation.summary ?? 'Shrnutí zatím není dostupné.'}</p>
+                )}
                 <div className="row">
-                  <button onClick={() => void saveMetadata()}>Upravit název a shrnutí</button>
+                  {!editing && (
+                    <button
+                      onClick={() => {
+                        setEditTitle(selected.conversation.title ?? '');
+                        setEditSummary(selected.conversation.summary ?? '');
+                        setEditing(true);
+                      }}
+                    >
+                      Upravit název a shrnutí
+                    </button>
+                  )}
                   <button
                     onClick={() =>
                       void api(`/history/${selected.conversation.id}/continue`, {
@@ -178,7 +233,9 @@ export function HistoryPage() {
                     Navázat novým rozhovorem
                   </button>
                   <button className="danger" onClick={() => void remove()}>
-                    Odstranit konverzaci
+                    {deleteArmed
+                      ? 'Klikněte znovu pro definitivní odstranění'
+                      : 'Odstranit konverzaci'}
                   </button>
                 </div>
               </header>

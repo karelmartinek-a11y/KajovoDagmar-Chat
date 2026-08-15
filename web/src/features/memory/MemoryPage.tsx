@@ -39,6 +39,9 @@ export function MemoryPage() {
   const [includeDeleted, setIncludeDeleted] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [editing, setEditing] = useState(false);
+  const [editContent, setEditContent] = useState('');
+  const [deleteArmed, setDeleteArmed] = useState(false);
 
   async function search(event?: FormEvent) {
     event?.preventDefault();
@@ -87,10 +90,14 @@ export function MemoryPage() {
     }
   }
 
-  async function edit() {
+  async function saveEdit() {
     if (!selected) return;
-    const content = window.prompt('Upravený obsah paměti', selected.content)?.trim();
-    if (!content || content === selected.content) return;
+    const content = editContent.trim();
+    if (!content) return;
+    if (content === selected.content) {
+      setEditing(false);
+      return;
+    }
     try {
       const updated = await api<MemoryItem>(`/memory/${selected.id}`, {
         method: 'PUT',
@@ -102,6 +109,7 @@ export function MemoryPage() {
         }),
       });
       setSelected(updated);
+      setEditing(false);
       setNotice('Změna byla uložena jako nová auditovatelná verze.');
       await search();
     } catch (reason) {
@@ -111,40 +119,53 @@ export function MemoryPage() {
 
   async function markOutdated() {
     if (!selected) return;
-    const updated = await api<MemoryItem>(`/memory/${selected.id}`, {
-      method: 'PUT',
-      body: JSON.stringify({ expected_version: selected.version, mark_outdated: true }),
-    });
-    setSelected(updated);
-    await search();
+    try {
+      const updated = await api<MemoryItem>(`/memory/${selected.id}`, {
+        method: 'PUT',
+        body: JSON.stringify({ expected_version: selected.version, mark_outdated: true }),
+      });
+      setSelected(updated);
+      setNotice('Položka byla označena jako neaktuální.');
+      await search();
+    } catch (reason) {
+      setError(reason instanceof ApiError ? reason.message : 'Položku se nepodařilo označit.');
+    }
   }
 
   async function remove() {
-    if (
-      !selected ||
-      !window.confirm(
-        `Odstranit vzpomínku „${selected.content.slice(0, 120)}“? Okamžitě se přestane používat v odpovědích.`,
-      )
-    )
+    if (!selected) return;
+    if (!deleteArmed) {
+      setDeleteArmed(true);
+      setNotice('Klikněte znovu pro potvrzení odstranění této položky.');
       return;
-    const updated = await api<MemoryItem>(`/memory/${selected.id}`, {
-      method: 'DELETE',
-      body: JSON.stringify({ expected_version: selected.version }),
-    });
-    setSelected(updated);
-    setNotice('Položka byla odstraněna a v retenční době ji lze obnovit.');
-    await search();
+    }
+    try {
+      const updated = await api<MemoryItem>(`/memory/${selected.id}`, {
+        method: 'DELETE',
+        body: JSON.stringify({ expected_version: selected.version }),
+      });
+      setSelected(updated);
+      setDeleteArmed(false);
+      setNotice('Položka byla odstraněna a v retenční době ji lze obnovit.');
+      await search();
+    } catch (reason) {
+      setError(reason instanceof ApiError ? reason.message : 'Položku se nepodařilo odstranit.');
+    }
   }
 
   async function restore() {
     if (!selected) return;
-    const updated = await api<MemoryItem>(`/memory/${selected.id}/restore`, {
-      method: 'POST',
-      body: JSON.stringify({ expected_version: selected.version }),
-    });
-    setSelected(updated);
-    setNotice('Položka byla obnovena do aktivní paměti.');
-    await search();
+    try {
+      const updated = await api<MemoryItem>(`/memory/${selected.id}/restore`, {
+        method: 'POST',
+        body: JSON.stringify({ expected_version: selected.version }),
+      });
+      setSelected(updated);
+      setNotice('Položka byla obnovena do aktivní paměti.');
+      await search();
+    } catch (reason) {
+      setError(reason instanceof ApiError ? reason.message : 'Položku se nepodařilo obnovit.');
+    }
   }
 
   return (
@@ -236,7 +257,17 @@ export function MemoryPage() {
           ) : (
             <>
               <h2>{categoryLabel(selected.category)}</h2>
-              <p className="memory-content">{selected.content}</p>
+              {editing ? (
+                <label>
+                  Upravit obsah
+                  <textarea
+                    value={editContent}
+                    onChange={(event) => setEditContent(event.target.value)}
+                  />
+                </label>
+              ) : (
+                <p className="memory-content">{selected.content}</p>
+              )}
               <dl>
                 <dt>Stav</dt>
                 <dd>{stateLabel(selected.state)}</dd>
@@ -252,10 +283,26 @@ export function MemoryPage() {
               <div className="row">
                 {selected.state !== 'deleted' && selected.state !== 'merged' && (
                   <>
-                    <button onClick={() => void edit()}>Opravit obsah</button>
+                    {editing ? (
+                      <>
+                        <button className="primary" onClick={() => void saveEdit()}>
+                          Uložit úpravu
+                        </button>
+                        <button onClick={() => setEditing(false)}>Zrušit</button>
+                      </>
+                    ) : (
+                      <button
+                        onClick={() => {
+                          setEditContent(selected.content);
+                          setEditing(true);
+                        }}
+                      >
+                        Opravit obsah
+                      </button>
+                    )}
                     <button onClick={() => void markOutdated()}>Označit jako neaktuální</button>
                     <button className="danger" onClick={() => void remove()}>
-                      Odstranit vzpomínku
+                      {deleteArmed ? 'Potvrdit odstranění' : 'Odstranit vzpomínku'}
                     </button>
                   </>
                 )}

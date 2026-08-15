@@ -544,7 +544,7 @@ async def test_realtime_handler_resumes_suspended_session(
     assert '"resume_available":true' in sent
     assert "session.resumed" in sent
     assert "turn.incomplete" in sent
-    assert state.generation == 2
+    assert state.generation == 1
     assert state.audio == b""
 
 

@@ -248,7 +248,8 @@ class OrchestrationService:
                 session, conversation_id, decision.answer, idem, run.id
             )
             run.response_message_id = message.id
-            run.completed_at = utc_now()
+            if not actions:
+                run.completed_at = utc_now()
             run.version += 1
             await self.audit.append(
                 session,
@@ -279,6 +280,8 @@ class OrchestrationService:
                 target_id=run.id,
                 details={"error_code": run.error_code, "attempts": run.attempt_count},
             )
+            if isinstance(exc, DomainError):
+                exc.durable = True
             raise
 
     async def confirm_action(
@@ -310,7 +313,9 @@ class OrchestrationService:
         if action.expires_at and action.expires_at <= utc_now():
             action.state = "expired"
             action.version += 1
-            raise ConflictError("Platnost potvrzení vypršela; vyžádejte nový náhled.")
+            expired = ConflictError("Platnost potvrzení vypršela; vyžádejte nový náhled.")
+            expired.durable = True
+            raise expired
         action.state = "running"
         action.confirmed_at = utc_now()
         action.version += 1
@@ -327,7 +332,7 @@ class OrchestrationService:
                     .where(
                         ToolAction.run_id == run.id,
                         ToolAction.id != action.id,
-                        ToolAction.state != "completed",
+                        ToolAction.state.not_in(["completed", "failed", "expired", "cancelled"]),
                     )
                     .limit(1)
                 )
@@ -357,6 +362,8 @@ class OrchestrationService:
                 target_id=action.id,
                 details={"name": action.name, "error_code": action.error_code},
             )
+            if isinstance(exc, DomainError):
+                exc.durable = True
             raise
 
     async def cancel_run(
@@ -434,7 +441,7 @@ class OrchestrationService:
             response_schema=ModelDecision.model_json_schema(),
             temperature=temperature,
             timeout_seconds=45.0,
-            capabilities=frozenset(model_row.capabilities or {}),
+            capabilities=model_row.capabilities,
         )
         started = perf_counter()
         try:
@@ -588,7 +595,12 @@ class OrchestrationService:
                 raise DomainError(
                     "tool_arguments_invalid", "Hledací nástroj nemá platný dotaz.", 502
                 )
-            limit = min(max(int(call.arguments.get("limit", 8)), 1), 20)
+            raw_limit = call.arguments.get("limit", 8)
+            if isinstance(raw_limit, bool) or not isinstance(raw_limit, int):
+                raise DomainError(
+                    "tool_arguments_invalid", "Limit nástroje musí být celé číslo.", 502
+                )
+            limit = min(max(raw_limit, 1), 20)
             if call.name == "memory_search":
                 ranked = await self.search.ranked_owner_ids(
                     session, account_id=account_id, owner_type="memory", query=query, limit=limit
@@ -725,9 +737,19 @@ class OrchestrationService:
             "memory_delete",
             "memory_restore",
         }:
-            memory_id = UUID(str(args.get("memory_id")))
+            try:
+                memory_id = UUID(str(args.get("memory_id")))
+            except (ValueError, AttributeError, TypeError) as exc:
+                raise DomainError(
+                    "tool_arguments_invalid", "Identifikátor paměti není platné UUID.", 502
+                ) from exc
             item = await self.memory.get(session, account_id, memory_id, include_deleted=True)
-            expected = int(args.get("expected_version", item.version))
+            expected_value = args.get("expected_version", item.version)
+            if isinstance(expected_value, bool) or not isinstance(expected_value, int):
+                raise DomainError(
+                    "tool_arguments_invalid", "Verze paměti musí být celé číslo.", 502
+                )
+            expected = expected_value
             if expected != item.version:
                 raise ConflictError(
                     "Cílová paměť se změnila před vytvořením náhledu.",
@@ -749,7 +771,15 @@ class OrchestrationService:
                 item.version,
             )
         if call.name == "memory_merge":
-            source_ids = [UUID(str(value)) for value in args.get("source_ids", [])]
+            raw_source_ids = args.get("source_ids", [])
+            if not isinstance(raw_source_ids, list):
+                raise DomainError("tool_arguments_invalid", "source_ids musí být seznam UUID.", 502)
+            try:
+                source_ids = [UUID(str(value)) for value in raw_source_ids]
+            except (ValueError, AttributeError, TypeError) as exc:
+                raise DomainError(
+                    "tool_arguments_invalid", "source_ids obsahuje neplatné UUID.", 502
+                ) from exc
             if len(set(source_ids)) < 2:
                 raise DomainError(
                     "tool_arguments_invalid", "Sloučení vyžaduje nejméně dvě položky.", 502
@@ -789,14 +819,21 @@ class OrchestrationService:
                 None,
             )
         if call.name in {"history_continue", "history_delete", "history_restore"}:
-            conversation_id = UUID(str(args.get("conversation_id")))
+            try:
+                conversation_id = UUID(str(args.get("conversation_id")))
+            except (ValueError, AttributeError, TypeError) as exc:
+                raise DomainError(
+                    "tool_arguments_invalid", "Identifikátor konverzace není platné UUID.", 502
+                ) from exc
             conversation_target, _ = await self.history.detail(
                 session, account_id, conversation_id, include_deleted=True
             )
             expected_value = args.get("expected_version")
-            expected = (
-                conversation_target.version if expected_value is None else int(expected_value)
-            )
+            expected = conversation_target.version if expected_value is None else expected_value
+            if isinstance(expected, bool) or not isinstance(expected, int):
+                raise DomainError(
+                    "tool_arguments_invalid", "Verze konverzace musí být celé číslo.", 502
+                )
             if expected != conversation_target.version:
                 raise ConflictError(
                     "Cílová konverzace se změnila před vytvořením náhledu.",
@@ -978,9 +1015,9 @@ class OrchestrationService:
         model = await session.get(ModelCatalogEntry, model_uuid)
         if model is None or not model.available:
             raise CapabilityUnavailableError("conversation_model", "Vybraný model není dostupný.")
-        required = {"chat", "responses", "structured_outputs"}
-        if model.capabilities and not required.intersection(
-            key for key, enabled in model.capabilities.items() if enabled
+        required = {"responses", "structured_outputs"}
+        if not required.issubset(
+            key for key, enabled in (model.capabilities or {}).items() if enabled is True
         ):
             raise CapabilityUnavailableError(
                 "conversation_model",

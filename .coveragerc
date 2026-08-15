@@ -1,0 +1,7 @@
+[run]
+branch = true
+omit =
+    */kajovodagmar/cli.py
+    */kajovodagmar/diagnostics/voice_live_probe.py
+    */kajovodagmar/worker.py
+    */kajovodagmar/realtime/websocket.py

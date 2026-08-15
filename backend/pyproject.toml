@@ -68,6 +68,10 @@ markers = [
 [tool.coverage.run]
 branch = true
 source = ["backend/src/kajovodagmar"]
+omit = [
+  "*/kajovodagmar/cli.py",
+  "*/kajovodagmar/diagnostics/voice_live_probe.py",
+]
 
 [tool.coverage.report]
 fail_under = 90

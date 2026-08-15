@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+import json
 from uuid import UUID
 
 from sqlalchemy import func, select
@@ -84,6 +86,18 @@ class ConversationService:
             raise NotFoundError("Konverzace nebyla nalezena.")
         if conversation.state != "active":
             raise ConflictError("Do uzavřené konverzace nelze přidat repliku.")
+        request_hash = hashlib.sha256(
+            json.dumps(
+                {
+                    "content": request.content.strip(),
+                    "input_mode": request.input_mode,
+                    "language": request.language,
+                },
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+            ).encode("utf-8")
+        ).hexdigest()
         existing = await session.scalar(
             select(ConversationMessage).where(
                 ConversationMessage.conversation_id == conversation_id,
@@ -91,6 +105,8 @@ class ConversationService:
             )
         )
         if existing:
+            if getattr(existing, "request_hash", None) and existing.request_hash != request_hash:
+                raise ConflictError("Idempotency klíč byl použit pro jiný požadavek.")
             return existing
         sequence = (
             int(
@@ -110,6 +126,7 @@ class ConversationService:
             input_mode=request.input_mode,
             status="final",
             idempotency_key=request.idempotency_key,
+            request_hash=request_hash,
             finalized_at=utc_now(),
         )
         session.add(message)

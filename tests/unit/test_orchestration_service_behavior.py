@@ -574,7 +574,9 @@ async def test_primary_model_validation_and_helpers() -> None:
             cast(Any, FakeSession(scalar_values=[setting], get_values=[unsupported]))
         )
     model = SimpleNamespace(
-        available=True, capabilities={"chat": True}, provider_id=provider_id
+        available=True,
+        capabilities={"chat": True, "responses": True, "structured_outputs": True},
+        provider_id=provider_id,
     )
     with pytest.raises(CapabilityUnavailableError):
         await orchestration._primary_model(

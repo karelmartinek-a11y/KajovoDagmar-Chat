@@ -33,8 +33,11 @@ class Database:
                 try:
                     yield session
                     await session.commit()
-                except Exception:
-                    await session.rollback()
+                except Exception as exc:
+                    if getattr(exc, "durable", False):
+                        await session.commit()
+                    else:
+                        await session.rollback()
                     raise
 
     async def dispose(self) -> None:

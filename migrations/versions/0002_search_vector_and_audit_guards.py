@@ -14,7 +14,7 @@ depends_on = None
 
 def upgrade() -> None:
     op.execute(
-        "CREATE TEXT SEARCH CONFIGURATION public.czech (COPY = pg_catalog.simple)"
+        "CREATE TEXT SEARCH CONFIGURATION public.czech (COPY = pg_catalog.english)"
     )
     op.execute(
         "ALTER TABLE search_embedding ALTER COLUMN vector_data TYPE vector(1536) USING vector_data::vector"

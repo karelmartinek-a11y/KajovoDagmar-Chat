@@ -53,6 +53,7 @@ class ConnectionState:
     expiration_task: asyncio.Task[None] | None = None
     connected: bool = True
     last_assistant_text: str | None = None
+    language: str = "cs"
 
     def event(
         self, event_type: str, payload: dict[str, Any], ack_for: UUID | None = None
@@ -311,7 +312,7 @@ async def handle_realtime(websocket: WebSocket, app: Any) -> None:
                     websocket,
                     app,
                     state,
-                    str(envelope.payload.get("language", "cs")),
+                    state.language,
                     envelope.event_id,
                     "manual",
                 )
@@ -328,7 +329,9 @@ async def handle_realtime(websocket: WebSocket, app: Any) -> None:
                 if state.last_assistant_text:
                     await replace_assistant_task(
                         state,
-                        synthesize(websocket, app, state, state.last_assistant_text, "cs"),
+                        synthesize(
+                            websocket, app, state, state.last_assistant_text, state.language
+                        ),
                     )
                 else:
                     await emit(
@@ -361,11 +364,36 @@ async def handle_realtime(websocket: WebSocket, app: Any) -> None:
                 state.conversation_id = None
                 state.audio.clear()
                 state.vad.reset()
+                state.last_client_sequence = 0
+                state.last_audio_sequence = 0
+                state.last_audio_capture_ms = -1.0
+                state.partial_text = ""
+                state.partial_at_bytes = 0
+                state.generation = 1
+                state.sequence = 0
+                await emit(
+                    websocket,
+                    state,
+                    "connection.ready",
+                    {
+                        "resume_supported": True,
+                        "resume_available": False,
+                        "generation": state.generation,
+                        "last_client_sequence": state.last_client_sequence,
+                    },
+                )
             else:
                 await emit(websocket, state, "ack", {}, envelope.event_id)
     except WebSocketDisconnect:
         # Inference is server-owned. The socket is only an event subscriber;
         # completed messages are already persisted by the conversation service.
+        state.connected = False
+        await cancel_partial_task(state)
+        if state.conversation_id:
+            state.paused = True
+            sessions[state.conversation_id] = state
+            state.expiration_task = asyncio.create_task(expire_suspended_session(app, state))
+    except Exception:
         state.connected = False
         await cancel_partial_task(state)
         if state.conversation_id:
@@ -544,6 +572,7 @@ async def expire_suspended_session(app: Any, state: ConnectionState) -> None:
 async def start_session(
     websocket: WebSocket, app: Any, state: ConnectionState, envelope: Any
 ) -> None:
+    state.language = str(envelope.payload.get("language", "cs"))
     continuation = envelope.payload.get("continuation_of_id")
     async with app.state.database.session() as db:
         setting_value = getattr(app.state, "setting_value", None)
@@ -558,7 +587,7 @@ async def start_session(
             state.account_id,
             ConversationStart(
                 input_mode="voice",
-                language=str(envelope.payload.get("language", "cs")),
+                language=state.language,
                 continuation_of_id=UUID(str(continuation)) if continuation else None,
             ),
             AuditContext("administrator", state.account_id, correlation_id=str(envelope.event_id)),
@@ -607,6 +636,17 @@ async def process_audio_turn(
         raise
     except DomainError as exc:
         await emit(websocket, state, "error", {"code": exc.code, "message": exc.message}, ack_for)
+    except Exception:
+        await emit(
+            websocket,
+            state,
+            "error",
+            {
+                "code": "realtime_processing_failed",
+                "message": "Hlasovou repliku se nepodařilo zpracovat.",
+            },
+            ack_for,
+        )
     finally:
         state.turn_finalizing = False
         state.partial_text = ""
@@ -643,7 +683,7 @@ async def process_text_turn(
                     idempotency_key=idempotency_key,
                     content=text,
                     input_mode=input_mode,
-                    language="cs",
+                    language=state.language,
                 ),
                 AuditContext("administrator", state.account_id, correlation_id=idempotency_key),
             )
@@ -690,12 +730,23 @@ async def process_text_turn(
             ack_for,
         )
         state.last_assistant_text = result.message.content
-        await synthesize(websocket, app, state, result.message.content, "cs")
+        await synthesize(websocket, app, state, result.message.content, state.language)
     except asyncio.CancelledError:
         await emit(websocket, state, "assistant.interrupted", {"state": "listening"}, ack_for)
         raise
     except DomainError as exc:
         await emit(websocket, state, "error", {"code": exc.code, "message": exc.message}, ack_for)
+    except Exception:
+        await emit(
+            websocket,
+            state,
+            "error",
+            {
+                "code": "realtime_processing_failed",
+                "message": "Textovou repliku se nepodařilo zpracovat.",
+            },
+            ack_for,
+        )
     finally:
         if state.conversation_id:
             await emit(websocket, state, "state.changed", {"state": "listening"})

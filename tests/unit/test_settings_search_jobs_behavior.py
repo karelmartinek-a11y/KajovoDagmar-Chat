@@ -270,7 +270,7 @@ async def test_hybrid_search_text_semantic_and_embedding_guards() -> None:
         query="dotaz",
         limit=5,
     ) == [owner]
-    search._query_embedding = AsyncMock(return_value=([0.1, 0.2], "embed-model"))
+    search._query_embedding = AsyncMock(return_value=([0.1] * 1536, "embed-model"))
     semantic_session = Session(execute_rows=[[SimpleNamespace(owner_id=owner)]])
     assert await search.ranked_owner_ids(
         cast(Any, semantic_session),
@@ -279,7 +279,7 @@ async def test_hybrid_search_text_semantic_and_embedding_guards() -> None:
         query="dotaz",
         limit=3,
     ) == [owner]
-    assert semantic_session.execute_parameters[0]["vector"] == "[0.1,0.2]"
+    assert semantic_session.execute_parameters[0]["vector"].startswith("[0.1,0.1")
     assert semantic_session.execute_parameters[0]["candidate_limit"] == 40
 
     real = HybridSearchService(cast(Any, providers))
@@ -318,10 +318,10 @@ async def test_hybrid_search_text_semantic_and_embedding_guards() -> None:
     assert await real._query_embedding(
         cast(Any, Session(scalar_values=[setting], get_values=[model, provider])), "q"
     ) == (None, None)
-    providers.runtime.return_value.embed.return_value = [[0.4, 0.5]]
+    providers.runtime.return_value.embed.return_value = [[0.4] * 1536]
     assert await real._query_embedding(
         cast(Any, Session(scalar_values=[setting], get_values=[model, provider])), "q"
-    ) == ([0.4, 0.5], "embed-model")
+    ) == ([0.4] * 1536, "embed-model")
 
 
 @pytest.mark.asyncio
@@ -340,7 +340,10 @@ async def test_job_lifecycle_retry_and_terminal_failure() -> None:
     created.attempts = 0
     created.max_attempts = 2
     claimed = await jobs.claim(
-        cast(Any, Session(row_groups=[[created]])), "worker-1", limit=1
+        cast(Any, Session(row_groups=[[created]])),
+        "worker-1",
+        limit=1,
+        allowed_kinds={"export_generate"},
     )
     assert claimed[0].state == "running"
     assert claimed[0].attempts == 1

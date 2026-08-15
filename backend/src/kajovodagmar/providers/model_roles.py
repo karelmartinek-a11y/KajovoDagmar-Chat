@@ -112,10 +112,16 @@ def _normal(value: str) -> str:
 
 
 def classify_model(
-    external_id: str, display_name: str, advertised: set[str] | frozenset[str]
+    external_id: str,
+    display_name: str,
+    advertised: set[str] | frozenset[str] | dict[str, bool],
 ) -> ClassifiedModel:
     model_id = _normal(external_id)
-    advertised_lower = {_normal(value) for value in advertised}
+    advertised_lower = (
+        {_normal(value) for value, enabled in advertised.items() if enabled}
+        if isinstance(advertised, dict)
+        else {_normal(value) for value in advertised}
+    )
     denied = any(marker in model_id for marker in DENY_MARKERS)
     roles: set[str] = set()
     if model_id == "whisper-1" or "transcrib" in model_id:
@@ -136,8 +142,9 @@ def classify_model(
     if "speech_model" in roles:
         roles -= {"conversation_model", "summary_model"}
     capabilities = {
-        "responses": "conversation_model" in roles or "summary_model" in roles,
-        "structured_outputs": "conversation_model" in roles or "summary_model" in roles,
+        # A model name can suggest a role, but cannot prove endpoint support.
+        "responses": "responses" in advertised_lower,
+        "structured_outputs": "structured_outputs" in advertised_lower,
         "transcriptions": "transcription_model" in roles,
         "speech": "speech_model" in roles,
         "embeddings": "embedding_model" in roles,

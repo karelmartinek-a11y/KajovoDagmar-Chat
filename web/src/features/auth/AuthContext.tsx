@@ -17,6 +17,7 @@ type InstanceState = 'loading' | 'uninitialized' | 'active';
 
 type AuthContextValue = {
   instanceState: InstanceState;
+  username: string;
   user: User | null;
   loading: boolean;
   refresh: () => Promise<void>;
@@ -83,8 +84,8 @@ export function AuthProvider({ children }: PropsWithChildren) {
   }, []);
 
   const value = useMemo(
-    () => ({ instanceState, user, loading, refresh, login, logout }),
-    [instanceState, user, loading, refresh, login, logout],
+    () => ({ instanceState, username, user, loading, refresh, login, logout }),
+    [instanceState, username, user, loading, refresh, login, logout],
   );
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

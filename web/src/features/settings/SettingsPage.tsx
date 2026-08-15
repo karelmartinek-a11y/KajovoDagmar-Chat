@@ -141,6 +141,9 @@ export function SettingsPage() {
     sender: '',
     use_starttls: true,
   });
+  const [emailTestRecipient, setEmailTestRecipient] = useState('');
+  const [backupPurpose, setBackupPurpose] = useState('');
+  const [restoreCandidate, setRestoreCandidate] = useState<string | null>(null);
   const [emailState, setEmailState] = useState<Record<string, unknown>>({ configured: false });
   const [exports, setExports] = useState<ExportRecord[]>([]);
   const [operationStatus, setOperationStatus] = useState<OperationStatus | null>(null);
@@ -338,9 +341,7 @@ export function SettingsPage() {
   }
 
   async function testEmail() {
-    const recipient = window
-      .prompt('Adresa pro skutečný test doručení', stringValue(emailState.sender, smtp.sender))
-      ?.trim();
+    const recipient = emailTestRecipient.trim() || stringValue(emailState.sender, smtp.sender);
     if (!recipient) return;
     try {
       await api('/notifications/email/test', {
@@ -375,7 +376,7 @@ export function SettingsPage() {
   }
 
   async function createBackup() {
-    const purpose = window.prompt('Účel ručního obnovovacího bodu')?.trim();
+    const purpose = backupPurpose.trim();
     if (!purpose) return;
     try {
       await api('/operations/backups', {
@@ -383,6 +384,7 @@ export function SettingsPage() {
         body: JSON.stringify({ purpose, idempotency_key: crypto.randomUUID() }),
       });
       setNotice('Ruční záloha byla zařazena do chráněné provozní fronty.');
+      setBackupPurpose('');
       await loadOperations();
     } catch (reason) {
       setError(reason instanceof ApiError ? reason.message : 'Zálohu se nepodařilo spustit.');
@@ -390,12 +392,10 @@ export function SettingsPage() {
   }
 
   async function backupAction(record: BackupRecord, action: 'verify' | 'restore-test') {
-    if (
-      action === 'restore-test' &&
-      window.prompt('Pro potvrzení opište: OBNOVIT DO IZOLOVANÉHO PROSTŘEDÍ') !==
-        'OBNOVIT DO IZOLOVANÉHO PROSTŘEDÍ'
-    )
+    if (action === 'restore-test' && restoreCandidate !== record.id) {
+      setRestoreCandidate(record.id);
       return;
+    }
     try {
       await api(`/operations/backups/${record.id}/${action}`, {
         method: 'POST',
@@ -412,6 +412,7 @@ export function SettingsPage() {
           ? 'Kontrola integrity zálohy byla zařazena do fronty.'
           : 'Izolovaný restore test byl potvrzen a zařazen do fronty.',
       );
+      setRestoreCandidate(null);
       await loadOperations();
     } catch (reason) {
       setError(reason instanceof ApiError ? reason.message : 'Provozní operace selhala.');
@@ -697,6 +698,15 @@ export function SettingsPage() {
                   Použít STARTTLS
                 </label>
                 <button className="primary">Uložit konfiguraci</button>
+                <label>
+                  Testovací příjemce
+                  <input
+                    type="email"
+                    value={emailTestRecipient}
+                    onChange={(e) => setEmailTestRecipient(e.target.value)}
+                    placeholder={stringValue(emailState.sender, smtp.sender)}
+                  />
+                </label>
                 <button type="button" onClick={() => void testEmail()}>
                   Provést skutečný test doručení
                 </button>
@@ -714,9 +724,15 @@ export function SettingsPage() {
               <div className="row">
                 <button
                   onClick={() =>
-                    void api('/operations/status').then((status) =>
-                      setNotice(JSON.stringify(status, null, 2)),
-                    )
+                    void api('/operations/status')
+                      .then((status) => setNotice(JSON.stringify(status, null, 2)))
+                      .catch((reason) =>
+                        setError(
+                          reason instanceof ApiError
+                            ? reason.message
+                            : 'Provozní stav se nepodařilo načíst.',
+                        ),
+                      )
                   }
                 >
                   Načíst provozní stav
@@ -782,7 +798,15 @@ export function SettingsPage() {
               </div>
               <div className="row">
                 <h3>Zálohy a izolované restore testy</h3>
-                <button className="primary" onClick={() => void createBackup()}>
+                <label>
+                  Účel ruční zálohy
+                  <input value={backupPurpose} onChange={(e) => setBackupPurpose(e.target.value)} />
+                </label>
+                <button
+                  className="primary"
+                  onClick={() => void createBackup()}
+                  disabled={!backupPurpose.trim()}
+                >
                   Vytvořit ruční obnovovací bod
                 </button>
               </div>
@@ -811,7 +835,9 @@ export function SettingsPage() {
                             Ověřit integritu
                           </button>
                           <button onClick={() => void backupAction(record, 'restore-test')}>
-                            Obnovit izolovaně
+                            {restoreCandidate === record.id
+                              ? 'Klikněte znovu pro restore test'
+                              : 'Obnovit izolovaně'}
                           </button>
                         </>
                       )}
