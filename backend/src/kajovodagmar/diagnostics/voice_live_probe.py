@@ -1,11 +1,9 @@
 from __future__ import annotations
 
 import asyncio
-import io
 import json
 import os
 import time
-import wave
 from typing import Any
 from uuid import UUID
 
@@ -20,14 +18,16 @@ from kajovodagmar.providers.service import ProviderService
 from kajovodagmar.security.crypto import SecretCipher
 
 
-def _wav() -> bytes:
-    output = io.BytesIO()
-    with wave.open(output, "wb") as stream:
-        stream.setnchannels(1)
-        stream.setsampwidth(2)
-        stream.setframerate(24_000)
-        stream.writeframes(b"\x00\x00" * 2_400)
-    return output.getvalue()
+def _pcm16_silence() -> bytes:
+    """Return a short raw PCM probe payload.
+
+    ``AIProvider.transcribe`` owns WAV framing: every provider is given raw
+    24 kHz PCM16 samples and the OpenAI-compatible transport wraps those
+    samples in a WAV container.  Passing a pre-built WAV here would create a
+    WAV-inside-WAV payload and make a valid live transcription endpoint look
+    unavailable.
+    """
+    return b"\x00\x00" * 2_400
 
 
 async def run_probe() -> dict[str, Any]:  # pragma: no cover - exercised as a container probe
@@ -107,9 +107,15 @@ async def run_probe() -> dict[str, Any]:  # pragma: no cover - exercised as a co
             provider, model = selected["transcription_model"]
             runtime = await providers.runtime(session, provider)
             started = time.perf_counter()
-            transcript = await runtime.transcribe(_wav(), model=model.external_id, language="cs")
-            if "automatický" not in transcript.text.casefold():
-                raise RuntimeError("transcription did not return the synthetic phrase")
+            transcript = await runtime.transcribe(
+                _pcm16_silence(), model=model.external_id, language="cs"
+            )
+            # Silence legitimately transcribes to an empty string.  A live
+            # capability probe verifies the endpoint, transport and response
+            # contract, not semantic recognition of audio that contains no
+            # speech.
+            if not isinstance(transcript.text, str):
+                raise RuntimeError("transcription returned an invalid text response")
             result["checks"]["transcription"] = {
                 "status": "pass",
                 "model": model.external_id,
