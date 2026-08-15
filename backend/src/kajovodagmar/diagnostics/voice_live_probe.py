@@ -27,7 +27,9 @@ def _pcm16_silence() -> bytes:
     WAV-inside-WAV payload and make a valid live transcription endpoint look
     unavailable.
     """
-    return b"\x00\x00" * 2_400
+    # A full second is deliberately long enough for live STT providers that
+    # reject extremely short recordings before they reach transcription.
+    return b"\x00\x00" * 24_000
 
 
 async def run_probe() -> dict[str, Any]:  # pragma: no cover - exercised as a container probe
