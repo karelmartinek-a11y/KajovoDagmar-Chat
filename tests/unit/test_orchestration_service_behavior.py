@@ -174,10 +174,18 @@ async def test_model_call_records_success_and_contract_failure() -> None:
     assert session.added[0].state == "completed"
 
     provider.chat.return_value = ChatResult("bad", "", {"answer": 1}, None, None)
-    with pytest.raises(DomainError, match="interní kontrakt"):
+    with pytest.raises(DomainError, match="interní kontrakt") as captured:
         await orchestration._call_model(
             cast(Any, session), run, provider_row, model, "prompt", [], temperature=0.1
         )
+    assert captured.value.details == {
+        "validation_errors": [
+            {"path": "intent", "type": "missing"},
+            {"path": "result_type", "type": "missing"},
+            {"path": "answer", "type": "string_type"},
+            {"path": "uncertainty", "type": "missing"},
+        ]
+    }
     assert session.added[-1].state == "failed"
     assert session.added[-1].error_code == "model_decision_invalid"
 

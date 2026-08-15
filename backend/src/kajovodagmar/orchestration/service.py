@@ -449,10 +449,18 @@ class OrchestrationService:
             try:
                 decision = self.adapter.validate_python(result.structured)
             except ValidationError as exc:
+                validation_errors = [
+                    {
+                        "path": ".".join(str(part) for part in error["loc"]),
+                        "type": str(error["type"]),
+                    }
+                    for error in exc.errors()
+                ]
                 raise DomainError(
                     "model_decision_invalid",
                     "Modelová odpověď nesplnila bezpečný interní kontrakt.",
                     502,
+                    {"validation_errors": validation_errors},
                 ) from exc
             attempt.state = "completed"
             attempt.provider_response_id = result.provider_response_id
