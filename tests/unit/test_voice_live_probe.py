@@ -50,9 +50,9 @@ async def test_live_probe_transcribes_raw_pcm_from_speech_provider(
         async def __aexit__(self, *_args: object) -> None:
             return None
 
-    class FakeDatabase:
+    class ProbeDatabase:
         def __init__(self, _settings: object) -> None:
-            pass
+            self.settings = _settings
 
         def session(self) -> SessionContext:
             return SessionContext()
@@ -60,7 +60,7 @@ async def test_live_probe_transcribes_raw_pcm_from_speech_provider(
         async def dispose(self) -> None:
             return None
 
-    class FakeRuntime:
+    class ProbeRuntime:
         async def chat(self, _request: object) -> ChatResult:
             return ChatResult("chat-1", "hotovo", {"answer": "hotovo"}, None, None)
 
@@ -86,11 +86,11 @@ async def test_live_probe_transcribes_raw_pcm_from_speech_provider(
             assert language == "cs"
             yield SpeechChunk(sequence=0, pcm16_24000_mono=pcm, final=True)
 
-    class FakeProviders:
+    class ProbeProviders:
         def __init__(self, *_args: object) -> None:
-            self.runtime_instance = FakeRuntime()
+            self.runtime_instance = ProbeRuntime()
 
-        async def runtime(self, _session: object, _provider: object) -> FakeRuntime:
+        async def runtime(self, _session: object, _provider: object) -> ProbeRuntime:
             return self.runtime_instance
 
     monkeypatch.setattr(
@@ -100,8 +100,8 @@ async def test_live_probe_transcribes_raw_pcm_from_speech_provider(
             root_encryption_key=SimpleNamespace(get_secret_value=lambda: "A" * 43)
         ),
     )
-    monkeypatch.setattr(voice_live_probe, "Database", FakeDatabase)
-    monkeypatch.setattr(voice_live_probe, "ProviderService", FakeProviders)
+    monkeypatch.setattr(voice_live_probe, "Database", ProbeDatabase)
+    monkeypatch.setattr(voice_live_probe, "ProviderService", ProbeProviders)
     monkeypatch.setattr(voice_live_probe, "SecretCipher", lambda _key: object())
 
     result = await voice_live_probe.run_probe()
