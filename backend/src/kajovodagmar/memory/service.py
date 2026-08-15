@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import unicodedata
 from datetime import timedelta
 from typing import Any
 from uuid import UUID
@@ -14,6 +15,10 @@ from kajovodagmar.memory.schemas import MemoryCreate, MemorySearch, MemoryUpdate
 from kajovodagmar.types import utc_now
 
 SECRET_TERMS = ("api key", "api klíč", "password", "heslo", "token", "obnovovací kód", "secret")
+
+
+def canonical_content(value: str) -> str:
+    return " ".join(unicodedata.normalize("NFC", value).casefold().split())
 
 
 def contains_secret_instruction(content: str) -> bool:
@@ -37,14 +42,34 @@ class MemoryService:
             )
         if request.valid_from and request.valid_until and request.valid_until < request.valid_from:
             raise DomainError("invalid_validity", "Konec platnosti nesmí předcházet začátku.", 422)
-        duplicate = await session.scalar(
-            select(MemoryItem)
-            .where(
-                MemoryItem.account_id == account_id,
-                MemoryItem.state.in_(["active", "pending_confirmation"]),
-                func.lower(MemoryItem.content) == request.content.casefold(),
+        candidates = list(
+            (
+                await session.scalars(
+                    select(MemoryItem).where(
+                        MemoryItem.account_id == account_id,
+                        MemoryItem.state.in_(["active", "pending_confirmation"]),
+                    )
+                )
+            ).all()
+        )
+        if not candidates:
+            legacy_candidate = await session.scalar(
+                select(MemoryItem)
+                .where(
+                    MemoryItem.account_id == account_id,
+                    MemoryItem.state.in_(["active", "pending_confirmation"]),
+                )
+                .limit(1)
             )
-            .limit(1)
+            if legacy_candidate is not None:
+                candidates.append(legacy_candidate)
+        duplicate = next(
+            (
+                item
+                for item in candidates
+                if canonical_content(item.content) == canonical_content(request.content)
+            ),
+            None,
         )
         if duplicate:
             raise ConflictError(
@@ -185,6 +210,20 @@ class MemoryService:
                     "secret_memory_forbidden",
                     "Tajné hodnoty se neukládají do dlouhodobé paměti.",
                     422,
+                )
+            normalized = canonical_content(request.content)
+            duplicate = await session.scalar(
+                select(MemoryItem)
+                .where(
+                    MemoryItem.account_id == account_id,
+                    MemoryItem.state.in_(["active", "pending_confirmation"]),
+                    MemoryItem.id != item.id,
+                )
+                .limit(1)
+            )
+            if duplicate and canonical_content(duplicate.content) == normalized:
+                raise ConflictError(
+                    "Významově totožná položka již existuje.", {"memory_id": str(duplicate.id)}
                 )
             item.content = request.content.strip()
         if request.category is not None:

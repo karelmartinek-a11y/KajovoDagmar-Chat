@@ -25,8 +25,11 @@ test.describe.serial('KájovoDagmar acceptance', () => {
       (response) =>
         response.request().method() === 'DELETE' && response.url().includes('/api/v1/memory/'),
     );
-    page.once('dialog', async (dialog) => dialog.accept());
     await page.getByRole('button', { name: 'Odstranit vzpomínku' }).click();
+    await expect(
+      page.getByText('Klikněte znovu pro potvrzení odstranění této položky.'),
+    ).toBeVisible();
+    await page.getByRole('button', { name: 'Potvrdit odstranění' }).click();
     expect((await deletion).status()).toBe(200);
     await expect(
       page.getByText('Položka byla odstraněna a v retenční době ji lze obnovit.'),

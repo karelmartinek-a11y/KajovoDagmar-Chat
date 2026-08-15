@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 MemoryCategory = Literal[
     "personal_fact", "preference", "rule", "decision", "commitment", "event", "note", "other"
@@ -24,6 +24,13 @@ class MemoryCreate(BaseModel):
     keywords: list[str] = Field(default_factory=list, max_length=30)
     confirmed: bool = False
 
+    @field_validator("content", mode="before")
+    @classmethod
+    def non_blank_content(cls, value: object) -> str:
+        if not isinstance(value, str) or not value.strip():
+            raise ValueError("Obsah paměti nesmí být prázdný.")
+        return value.strip()
+
 
 class MemoryUpdate(BaseModel):
     expected_version: int = Field(ge=1)
@@ -33,6 +40,15 @@ class MemoryUpdate(BaseModel):
     valid_from: datetime | None = None
     valid_until: datetime | None = None
     mark_outdated: bool = False
+
+    @field_validator("content", mode="before")
+    @classmethod
+    def non_blank_content(cls, value: object) -> str | None:
+        if value is None:
+            return None
+        if not isinstance(value, str) or not value.strip():
+            raise ValueError("Obsah paměti nesmí být prázdný.")
+        return value.strip()
 
 
 class MemorySearch(BaseModel):

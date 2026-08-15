@@ -5,7 +5,7 @@ from uuid import uuid4
 
 from fastapi import Request
 from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.responses import Response
+from starlette.responses import JSONResponse, Response
 
 from kajovodagmar.observability.metrics import HTTP_LATENCY, HTTP_REQUESTS
 from kajovodagmar.observability.tracing import traced
@@ -17,7 +17,13 @@ class CorrelationAndSecurityMiddleware(BaseHTTPMiddleware):
         correlation = request.headers.get("X-Correlation-ID") or uuid4().hex
         request.state.correlation_id = correlation
         started = time.perf_counter()
-        response: Response = await call_next(request)
+        try:
+            response: Response = await call_next(request)
+        except Exception:
+            response = JSONResponse(
+                {"error": {"code": "internal_error", "message": "Interní chyba serveru."}},
+                status_code=500,
+            )
         elapsed = time.perf_counter() - started
         route = request.scope.get("route")
         route_name = getattr(route, "path", "unmatched")

@@ -21,6 +21,7 @@ from kajovodagmar.identity.schemas import (
     PasswordResetComplete,
     PasswordResetRequest,
 )
+from kajovodagmar.types import utc_now
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -29,7 +30,11 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 async def auth_state(request: Request, session: AsyncSession = Depends(db_session)):
     state = await request.app.state.identity.initialization_state(session)
     account = await session.scalar(select(AdministratorAccount).limit(1))
-    return {"instance_state": state, "username": account.username if account else "Karmar78"}
+    return {
+        "instance_state": state,
+        "initialized": account is not None,
+        "username": account.username if account else "Karmar78",
+    }
 
 
 @router.post("/initialize", status_code=201)
@@ -126,7 +131,12 @@ async def sessions(
     rows = (
         await session.scalars(
             select(AuthSession)
-            .where(AuthSession.account_id == identity.account.id, AuthSession.revoked_at.is_(None))
+            .where(
+                AuthSession.account_id == identity.account.id,
+                AuthSession.revoked_at.is_(None),
+                AuthSession.expires_at > utc_now(),
+                AuthSession.absolute_expires_at > utc_now(),
+            )
             .order_by(AuthSession.last_activity_at.desc())
         )
     ).all()

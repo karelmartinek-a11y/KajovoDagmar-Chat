@@ -4,7 +4,7 @@ import { useAuth } from './AuthContext';
 import { Brand } from '../../components/Brand';
 
 export function LoginPage() {
-  const { login } = useAuth();
+  const { login, username } = useAuth();
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -27,7 +27,7 @@ export function LoginPage() {
       <section className="panel auth-card" aria-labelledby="login-title">
         <Brand />
         <h1 id="login-title">Přihlášení</h1>
-        <p className="muted">Soukromý přístup pro administrátora Karmar78.</p>
+        <p className="muted">Soukromý přístup pro administrátora {username}.</p>
         {error && (
           <div className="error" role="alert">
             {error}
@@ -36,7 +36,7 @@ export function LoginPage() {
         <form className="stack" onSubmit={(event) => void submit(event)}>
           <label>
             Uživatelské jméno
-            <input value="Karmar78" readOnly autoComplete="username" />
+            <input value={username} readOnly autoComplete="username" />
           </label>
           <label>
             Heslo

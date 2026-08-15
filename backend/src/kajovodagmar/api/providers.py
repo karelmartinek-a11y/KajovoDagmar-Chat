@@ -92,15 +92,12 @@ async def save(
         context=identity.audit_context,
     )
     catalog = await request.app.state.providers.verify(session, row.id, identity.audit_context)
-    recommendations = await request.app.state.model_recommendations.apply_recommended(
-        session, row.id, identity.account.id, identity.audit_context
-    )
     return {
         "id": str(row.id),
         "version": row.version,
         "verification_state": row.verification_state,
         "catalog_count": len(catalog),
-        "recommendations": recommendations,
+        "recommendations": None,
     }
 
 
@@ -112,9 +109,6 @@ async def verify(
     identity: RequestIdentity = Depends(csrf_guard),
 ):
     rows = await request.app.state.providers.verify(session, provider_id, identity.audit_context)
-    recommendations = await request.app.state.model_recommendations.apply_recommended(
-        session, provider_id, identity.account.id, identity.audit_context
-    )
     return {
         "verified": True,
         "models": [
@@ -126,7 +120,7 @@ async def verify(
             }
             for r in rows
         ],
-        "recommendations": recommendations,
+        "recommendations": None,
     }
 
 

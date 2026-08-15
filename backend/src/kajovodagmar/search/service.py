@@ -6,8 +6,9 @@ from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from kajovodagmar.db.models import ApplicationSetting, ModelCatalogEntry, ProviderConfiguration
-from kajovodagmar.errors import CapabilityUnavailableError
+from kajovodagmar.errors import CapabilityUnavailableError, DomainError
 from kajovodagmar.providers.service import ProviderService
+from kajovodagmar.search.constants import validate_vector_dimensions
 
 
 class HybridSearchService:
@@ -36,8 +37,8 @@ class HybridSearchService:
                     WHERE account_id = :account_id
                       AND owner_type = :owner_type
                       AND stale = false
-                      AND text_vector @@ websearch_to_tsquery('simple', :query)
-                    ORDER BY ts_rank_cd(text_vector, websearch_to_tsquery('simple', :query)) DESC,
+                      AND text_vector @@ websearch_to_tsquery('czech', :query)
+                    ORDER BY ts_rank_cd(text_vector, websearch_to_tsquery('czech', :query)) DESC,
                              owner_id ASC
                     LIMIT :limit
                     """
@@ -59,7 +60,7 @@ class HybridSearchService:
                            row_number() OVER (
                              ORDER BY ts_rank_cd(
                                text_vector,
-                               websearch_to_tsquery('simple', :query)
+                               websearch_to_tsquery('czech', :query)
                              ) DESC,
                                       owner_id ASC
                            ) AS rank_position
@@ -67,7 +68,7 @@ class HybridSearchService:
                     WHERE account_id = :account_id
                       AND owner_type = :owner_type
                       AND stale = false
-                      AND text_vector @@ websearch_to_tsquery('simple', :query)
+                      AND text_vector @@ websearch_to_tsquery('czech', :query)
                     LIMIT :candidate_limit
                 ),
                 semantic_hits AS (
@@ -134,8 +135,12 @@ class HybridSearchService:
         try:
             runtime = await self.providers.runtime(session, provider)
             vectors = await runtime.embed([query], model=model.external_id)
-        except CapabilityUnavailableError:
+        except (CapabilityUnavailableError, DomainError):
             return None, None
         if len(vectors) != 1 or not vectors[0]:
+            return None, None
+        try:
+            validate_vector_dimensions(vectors[0])
+        except ValueError:
             return None, None
         return vectors[0], model.external_id

@@ -96,6 +96,9 @@ def append_audit(
     correlation_id: str | None,
     details: dict[str, Any],
 ) -> None:
+    connection.execute(
+        "SELECT pg_advisory_xact_lock(hashtext('kajovodagmar.audit_chain'))"
+    )
     previous = connection.execute(
         "SELECT event_hash FROM audit_event ORDER BY id DESC LIMIT 1"
     ).fetchone()

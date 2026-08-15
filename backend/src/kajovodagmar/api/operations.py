@@ -19,11 +19,14 @@ from kajovodagmar.api.dependencies import (
 )
 from kajovodagmar.audit.service import AuditService
 from kajovodagmar.db.models import (
+    ApplicationSetting,
     AuditEvent,
     BackgroundJob,
     BackupRecord,
+    ModelCatalogEntry,
     ProviderConfiguration,
     SystemInstance,
+    WorkerHeartbeat,
 )
 from kajovodagmar.errors import ConflictError, NotFoundError
 from kajovodagmar.observability.metrics import BACKUPS
@@ -103,9 +106,53 @@ async def ready(request: Request, session: AsyncSession = Depends(db_session)):
     instance = await session.scalar(
         select(SystemInstance).where(SystemInstance.singleton_key == "primary")
     )
+    conversation_setting = await session.scalar(
+        select(ApplicationSetting).where(
+            ApplicationSetting.area == "models", ApplicationSetting.key == "conversation_model"
+        )
+    )
+    selected_model_id = (
+        str(conversation_setting.value.get("value"))
+        if conversation_setting and conversation_setting.value.get("value")
+        else None
+    )
+    try:
+        selected_model_uuid = UUID(selected_model_id) if selected_model_id else None
+    except ValueError:
+        selected_model_uuid = None
+    selected_model = (
+        await session.scalar(
+            select(ModelCatalogEntry)
+            .join(ProviderConfiguration)
+            .where(
+                ModelCatalogEntry.id == selected_model_uuid,
+                ModelCatalogEntry.available.is_(True),
+                ProviderConfiguration.enabled.is_(True),
+                ProviderConfiguration.verification_state == "verified",
+            )
+        )
+        if selected_model_id
+        else None
+    )
+    capabilities_ready = bool(
+        selected_model
+        and selected_model.capabilities.get("responses") is True
+        and selected_model.capabilities.get("structured_outputs") is True
+    )
+    # Bootstrap is operational before an optional model is selected; once a
+    # selection exists it must be backed by a verified, capability-complete model.
+    ready_state = bool(
+        instance
+        and instance.state in {"active", "ready"}
+        and (selected_model_id is None or capabilities_ready)
+    )
     return {
-        "status": "ready",
+        "status": "ready" if ready_state else "not_ready",
         "instance_state": instance.state if instance else "bootstrap_required",
+        "capabilities": {
+            "conversation_model": capabilities_ready,
+            "selected_model_id": selected_model_id,
+        },
         "version": "1.0.0",
     }
 
@@ -143,15 +190,25 @@ async def status(
         .order_by(BackupRecord.completed_at.desc())
         .limit(1)
     )
+    last_worker_seen = await session.scalar(select(func.max(WorkerHeartbeat.last_seen_at)))
+    worker_alive = bool(last_worker_seen and (utc_now() - last_worker_seen).total_seconds() <= 90)
     return {
         "checked_at": utc_now().isoformat(),
         "components": {
             "web": {"state": "ready", "impact": None, "action": None},
             "database": {"state": "ready", "impact": None, "action": None},
             "worker": {
-                "state": "limited" if int(queued or 0) > 100 else "ready",
-                "impact": "Úlohy mohou být opožděné." if int(queued or 0) > 100 else None,
-                "action": "Zkontrolujte worker a frontu." if int(queued or 0) > 100 else None,
+                "state": (
+                    "error"
+                    if not worker_alive
+                    else ("limited" if int(queued or 0) > 100 else "ready")
+                ),
+                "impact": "Worker nehlásí heartbeat."
+                if not worker_alive
+                else ("Úlohy mohou být opožděné." if int(queued or 0) > 100 else None),
+                "action": "Spusťte nebo zkontrolujte worker."
+                if not worker_alive
+                else ("Zkontrolujte worker a frontu." if int(queued or 0) > 100 else None),
             },
             "providers": {
                 "state": "ready" if int(providers or 0) > 0 else "limited",
@@ -174,6 +231,7 @@ async def status(
         },
         "providers_ready": int(providers or 0),
         "jobs_pending": int(queued or 0),
+        "worker_last_seen_at": last_worker_seen.isoformat() if last_worker_seen else None,
         "last_backup": {
             "completed_at": last_backup.completed_at.isoformat()
             if last_backup and last_backup.completed_at

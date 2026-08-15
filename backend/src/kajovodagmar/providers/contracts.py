@@ -4,12 +4,28 @@ from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from typing import Any, Protocol
 
+type CapabilityMap = dict[str, bool]
+type CapabilityInput = CapabilityMap | frozenset[str] | set[str]
+
+
+def enabled_capabilities(capabilities: CapabilityInput | None) -> frozenset[str]:
+    """Return only explicitly enabled capabilities from persisted JSON."""
+    return frozenset(
+        name
+        for name, enabled in (
+            capabilities.items()
+            if isinstance(capabilities, dict)
+            else ((name, True) for name in (capabilities or ()))
+        )
+        if enabled is True
+    )
+
 
 @dataclass(frozen=True, slots=True)
 class ProviderModel:
     external_id: str
     display_name: str
-    capabilities: frozenset[str]
+    capabilities: CapabilityInput
 
 
 @dataclass(frozen=True, slots=True)
@@ -25,7 +41,7 @@ class ChatRequest:
     response_schema: dict[str, Any]
     temperature: float
     timeout_seconds: float
-    capabilities: frozenset[str] = frozenset()
+    capabilities: CapabilityInput | None = None
 
 
 @dataclass(frozen=True, slots=True)

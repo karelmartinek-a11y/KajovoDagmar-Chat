@@ -8,7 +8,11 @@ from uuid import uuid4
 import pytest
 
 from kajovodagmar.api.dependencies import RequestIdentity
-from kajovodagmar.api.operations import BackupActionRequest, enqueue_backup_action
+from kajovodagmar.api.operations import (
+    BackupActionRequest,
+    enqueue_backup_action,
+    ready,
+)
 from kajovodagmar.audit.service import AuditContext
 from kajovodagmar.errors import ConflictError, NotFoundError
 
@@ -18,6 +22,12 @@ class Session:
         self.values = values
 
     async def get(self, *_args: Any, **_kwargs: Any) -> Any:
+        return self.values.pop(0)
+
+    async def execute(self, _query: Any) -> None:
+        return None
+
+    async def scalar(self, _query: Any) -> Any:
         return self.values.pop(0)
 
 
@@ -66,6 +76,36 @@ async def test_backup_action_idempotently_returns_existing_record() -> None:
         identity=identity(),
     )
     assert result is row
+
+
+@pytest.mark.asyncio
+async def test_ready_checks_selected_model_capabilities() -> None:
+    model_id = uuid4()
+    selected = SimpleNamespace(value={"value": str(model_id)})
+    capable = SimpleNamespace(
+        id=model_id, capabilities={"responses": True, "structured_outputs": True}
+    )
+    result = await ready(
+        cast(Any, None),
+        cast(Any, Session([SimpleNamespace(state="active"), selected, capable])),
+    )
+    assert result["status"] == "ready"
+    assert result["capabilities"]["selected_model_id"] == str(model_id)
+
+    invalid = await ready(
+        cast(Any, None),
+        cast(
+            Any,
+            Session(
+                [
+                    SimpleNamespace(state="active"),
+                    SimpleNamespace(value={"value": "bad"}),
+                    None,
+                ]
+            ),
+        ),
+    )
+    assert invalid["status"] == "not_ready"
 
 
 @pytest.mark.asyncio

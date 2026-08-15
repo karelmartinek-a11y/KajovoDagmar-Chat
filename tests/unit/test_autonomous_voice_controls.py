@@ -36,7 +36,7 @@ async def test_deterministic_provider_has_all_synthetic_capabilities() -> None:
         ["synthetic"], model="synthetic-acceptance-embedding"
     )
     assert len(vectors) == 1
-    assert len(vectors[0]) == 3072
+    assert len(vectors[0]) == 1536
     transcription = await provider.transcribe(
         b"synthetic-wav", model="synthetic", language="cs"
     )

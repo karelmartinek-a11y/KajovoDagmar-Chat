@@ -59,4 +59,25 @@ describe('API client', () => {
       status: 500,
     });
   });
+
+  it('normalizes network and non-JSON failures without leaking parser errors', async () => {
+    fetchMock.mockRejectedValueOnce(new TypeError('offline'));
+    await expect(api('/state')).rejects.toMatchObject({ code: 'network_error', status: 0 });
+
+    fetchMock.mockResolvedValueOnce(
+      new Response('<html>server failure</html>', {
+        status: 502,
+        headers: { 'Content-Type': 'text/html' },
+      }),
+    );
+    await expect(api('/state')).rejects.toMatchObject({ code: 'request_failed', status: 502 });
+
+    fetchMock.mockResolvedValueOnce(
+      new Response('{broken', {
+        status: 502,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+    await expect(api('/state')).rejects.toMatchObject({ code: 'request_failed', status: 502 });
+  });
 });

@@ -342,6 +342,15 @@ export class VoiceClient {
       await this.connectSocket(false, continuationOfId);
       await this.waitForConversation();
     } catch (error) {
+      this.stopPlayback();
+      this.recorder?.disconnect();
+      this.source?.disconnect();
+      this.mediaStream?.getTracks().forEach((track) => track.stop());
+      this.mediaStream = null;
+      this.recorder = null;
+      this.source = null;
+      this.socket?.close(1000, 'start_failed');
+      this.socket = null;
       const name = error instanceof DOMException ? error.name : '';
       const message =
         name === 'NotAllowedError' || name === 'SecurityError'
@@ -446,7 +455,7 @@ export class VoiceClient {
     }, delay);
   }
 
-  async startAndSendText(text: string, language = 'cs'): Promise<void> {
+  async startAndSendText(text: string, language = this.language): Promise<void> {
     if (!this.snapshot.conversationId) {
       const conversation = await api<{ id: string }>('/conversations', {
         method: 'POST',
@@ -488,7 +497,8 @@ export class VoiceClient {
   }
 
   finishTurn(): void {
-    if (this.snapshot.state === 'listening') this.send('turn.audio_end', { language: 'cs' });
+    if (this.snapshot.state === 'listening')
+      this.send('turn.audio_end', { language: this.language });
   }
 
   async sendText(text: string): Promise<void> {
@@ -509,7 +519,7 @@ export class VoiceClient {
         idempotency_key: uuid(),
         content: text,
         input_mode: 'text',
-        language: 'cs',
+        language: this.language,
       }),
     });
     this.update({
@@ -554,10 +564,21 @@ export class VoiceClient {
   }
 
   async end(): Promise<void> {
+    const conversationId = this.snapshot.conversationId;
     this.ending = true;
     if (this.reconnectTimer !== null) window.clearTimeout(this.reconnectTimer);
     this.reconnectTimer = null;
     if (this.socket?.readyState === WebSocket.OPEN) this.send('session.end', {});
+    else if (conversationId) {
+      try {
+        await api(`/conversations/${conversationId}/end`, {
+          method: 'POST',
+          body: JSON.stringify({ reason: 'user_ended' }),
+        });
+      } catch {
+        // Always release local media resources when the server is unavailable.
+      }
+    }
     this.stopPlayback();
     this.mediaStream?.getTracks().forEach((track) => track.stop());
     this.source?.disconnect();
@@ -568,6 +589,13 @@ export class VoiceClient {
     this.audioContext = null;
     await this.releaseWakeLock();
     this.mediaStream = null;
+    this.sequence = 0;
+    this.lastServerSequence = 0;
+    this.frameSequence = 0;
+    this.generation = 1;
+    this.lastAudioFrameAt = 0;
+    this.lastAssistantText = null;
+    this.playbackQueue = [];
     this.move('ended', 'Rozhovor byl ukončen');
     this.update({
       error: null,
@@ -578,6 +606,9 @@ export class VoiceClient {
       trackState: 'unavailable',
       connectionState: 'disconnected',
       turnState: 'idle',
+      transcript: [],
+      partialTranscript: '',
+      audioRetryAvailable: false,
     });
   }
 
@@ -602,7 +633,24 @@ export class VoiceClient {
       await this.enqueuePcm(event.data);
       return;
     }
-    const message = JSON.parse(String(event.data)) as ServerEvent;
+    let message: ServerEvent;
+    try {
+      message = JSON.parse(String(event.data)) as ServerEvent;
+    } catch {
+      this.fail('Server poslal neplatnou realtime událost. Spojení bude obnoveno.');
+      this.socket?.close(4002, 'invalid_json');
+      return;
+    }
+    if (
+      message.version !== '1.0' ||
+      typeof message.sequence !== 'number' ||
+      typeof message.type !== 'string' ||
+      !message.payload ||
+      typeof message.payload !== 'object'
+    ) {
+      this.fail('Server poslal neplatnou realtime událost. Spojení bude obnoveno.');
+      return;
+    }
     if (message.sequence <= this.lastServerSequence) return;
     if (message.sequence !== this.lastServerSequence + 1) {
       if (this.socket) this.socket.close(4000, 'sequence_gap');

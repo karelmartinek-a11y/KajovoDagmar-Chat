@@ -17,6 +17,7 @@ from kajovodagmar.providers.contracts import (
     ProviderModel,
     SpeechChunk,
     TranscriptResult,
+    enabled_capabilities,
 )
 
 
@@ -31,21 +32,59 @@ class OpenAICompatibleProvider(AIProvider):
 
     @traced("provider.list_models")
     async def list_models(self) -> list[ProviderModel]:
-        async with httpx.AsyncClient(timeout=self.timeout) as client:
-            response = await client.get(f"{self.base_url}/models", headers=self._headers())
+        try:
+            async with httpx.AsyncClient(timeout=self.timeout) as client:
+                response = await client.get(f"{self.base_url}/models", headers=self._headers())
+        except httpx.HTTPError as exc:
+            raise DomainError(
+                "provider_network_error",
+                "Katalog poskytovatele není dostupný.",
+                503,
+                {"capability": "model_catalog", "error": exc.__class__.__name__},
+            ) from exc
         self._raise(response, "model_catalog")
-        data = response.json()
-        return [
-            ProviderModel(
-                external_id=item["id"],
-                display_name=item.get("name", item["id"]),
-                capabilities=frozenset(item.get("capabilities", [])),
+        try:
+            data = response.json()
+        except (ValueError, TypeError) as exc:
+            raise DomainError(
+                "provider_invalid_response", "Katalog poskytovatele má neplatný formát.", 502
+            ) from exc
+        if not isinstance(data, dict) or not isinstance(data.get("data"), list):
+            raise DomainError(
+                "provider_invalid_response", "Katalog poskytovatele má neplatný formát.", 502
             )
-            for item in data.get("data", [])
-        ]
+        models: list[ProviderModel] = []
+        for index, item in enumerate(data["data"]):
+            if not isinstance(item, dict) or not isinstance(item.get("id"), str):
+                raise DomainError(
+                    "provider_invalid_response",
+                    "Katalog obsahuje neplatný model.",
+                    502,
+                    {"index": index},
+                )
+            advertised = item.get("capabilities", {})
+            if isinstance(advertised, list):
+                advertised = {str(value): True for value in advertised}
+            if not isinstance(advertised, dict):
+                advertised = {}
+            models.append(
+                ProviderModel(
+                    external_id=item["id"],
+                    display_name=(
+                        item["name"] if isinstance(item.get("name"), str) else item["id"]
+                    ),
+                    capabilities={str(key): bool(value) for key, value in advertised.items()},
+                )
+            )
+        return models
 
     @traced("provider.chat")
     async def chat(self, request: ChatRequest) -> ChatResult:
+        capabilities = enabled_capabilities(request.capabilities)
+        if request.capabilities is not None and "structured_outputs" not in capabilities:
+            raise CapabilityUnavailableError(
+                "structured_outputs", "Model nemá ověřenou podporu strukturovaných výstupů."
+            )
         payload: dict[str, Any] = {
             "model": request.model,
             "input": [
@@ -63,16 +102,27 @@ class OpenAICompatibleProvider(AIProvider):
         }
         # An empty capability set is the legacy-compatible policy. A populated
         # catalog entry is authoritative and prevents unsupported parameters.
-        if not request.capabilities or "temperature" in request.capabilities:
+        if not request.capabilities or "temperature" in capabilities:
             payload["temperature"] = request.temperature
-        if request.capabilities and "json_schema" not in request.capabilities:
-            payload.pop("text", None)
-        async with httpx.AsyncClient(timeout=request.timeout_seconds) as client:
-            response = await client.post(
-                f"{self.base_url}/responses", headers=self._headers(), json=payload
-            )
+        try:
+            async with httpx.AsyncClient(timeout=request.timeout_seconds) as client:
+                response = await client.post(
+                    f"{self.base_url}/responses", headers=self._headers(), json=payload
+                )
+        except httpx.HTTPError as exc:
+            raise DomainError(
+                "provider_network_error",
+                "Konverzační poskytovatel není dostupný.",
+                503,
+                {"capability": "conversation_model", "error": exc.__class__.__name__},
+            ) from exc
         self._raise(response, "conversation_model")
-        body = response.json()
+        try:
+            body = response.json()
+        except (ValueError, TypeError) as exc:
+            raise DomainError(
+                "provider_invalid_response", "Odpověď poskytovatele má neplatný formát.", 502
+            ) from exc
         text = self._response_text(body)
         try:
             structured = json.loads(text)
@@ -108,6 +158,10 @@ class OpenAICompatibleProvider(AIProvider):
             )
         self._raise(response, "transcription")
         body = response.json()
+        if not isinstance(body, dict) or not isinstance(body.get("text"), str):
+            raise DomainError(
+                "provider_invalid_response", "Přepisovač vrátil neplatný formát.", 502
+            )
         return TranscriptResult(
             text=body["text"],
             language=body.get("language", language),
@@ -123,29 +177,69 @@ class OpenAICompatibleProvider(AIProvider):
             "input": text,
             "response_format": "pcm",
         }
-        async with (
-            httpx.AsyncClient(timeout=self.timeout) as client,
-            client.stream(
-                "POST", f"{self.base_url}/audio/speech", headers=self._headers(), json=payload
-            ) as response,
-        ):
-            self._raise(response, "speech_synthesis")
-            sequence = 0
-            async for chunk in response.aiter_bytes(19200):
-                if chunk:
-                    yield SpeechChunk(sequence=sequence, pcm16_24000_mono=chunk, final=False)
-                    sequence += 1
-            yield SpeechChunk(sequence=sequence, pcm16_24000_mono=b"", final=True)
+        try:
+            async with (
+                httpx.AsyncClient(timeout=self.timeout) as client,
+                client.stream(
+                    "POST", f"{self.base_url}/audio/speech", headers=self._headers(), json=payload
+                ) as response,
+            ):
+                self._raise(response, "speech_synthesis")
+                sequence = 0
+                async for chunk in response.aiter_bytes(19200):
+                    if chunk:
+                        yield SpeechChunk(sequence=sequence, pcm16_24000_mono=chunk, final=False)
+                        sequence += 1
+                yield SpeechChunk(sequence=sequence, pcm16_24000_mono=b"", final=True)
+        except httpx.HTTPError as exc:
+            raise DomainError(
+                "provider_network_error",
+                "Hlasový poskytovatel není dostupný.",
+                503,
+                {"capability": "speech", "error": exc.__class__.__name__},
+            ) from exc
 
     @traced("provider.embed")
     async def embed(self, texts: list[str], *, model: str) -> list[list[float]]:
         payload = {"model": model, "input": texts, "encoding_format": "float"}
-        async with httpx.AsyncClient(timeout=self.timeout) as client:
-            response = await client.post(
-                f"{self.base_url}/embeddings", headers=self._headers(), json=payload
-            )
+        try:
+            async with httpx.AsyncClient(timeout=self.timeout) as client:
+                response = await client.post(
+                    f"{self.base_url}/embeddings", headers=self._headers(), json=payload
+                )
+        except httpx.HTTPError as exc:
+            raise DomainError(
+                "provider_network_error",
+                "Embedding poskytovatel není dostupný.",
+                503,
+                {"capability": "embeddings", "error": exc.__class__.__name__},
+            ) from exc
         self._raise(response, "embeddings")
-        return [item["embedding"] for item in response.json().get("data", [])]
+        try:
+            body = response.json()
+        except (ValueError, TypeError) as exc:
+            raise DomainError(
+                "provider_invalid_response", "Embedding odpověď má neplatný formát.", 502
+            ) from exc
+        data = body.get("data") if isinstance(body, dict) else None
+        if not isinstance(data, list):
+            raise DomainError(
+                "provider_invalid_response", "Embedding odpověď má neplatný formát.", 502
+            )
+        vectors: list[list[float]] = []
+        for index, item in enumerate(data):
+            values = item.get("embedding") if isinstance(item, dict) else None
+            if not isinstance(values, list) or not all(
+                isinstance(value, (int, float)) for value in values
+            ):
+                raise DomainError(
+                    "provider_invalid_response",
+                    "Embedding odpověď má neplatné hodnoty.",
+                    502,
+                    {"index": index},
+                )
+            vectors.append([float(value) for value in values])
+        return vectors
 
     @staticmethod
     def _response_text(body: dict[str, Any]) -> str:

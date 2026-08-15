@@ -17,9 +17,9 @@ def assert_status(response, expected: int) -> dict:
 
 def test_authenticated_api_lifecycle(api_client: TestClient) -> None:
     assert assert_status(api_client.get("/api/v1/health/live"), 200) == {"status": "ok"}
-    assert assert_status(api_client.get("/api/v1/auth/state"), 200)[
-        "instance_state"
-    ] == ("uninitialized")
+    initial_state = assert_status(api_client.get("/api/v1/auth/state"), 200)
+    assert initial_state["instance_state"] == "uninitialized"
+    assert initial_state["username"] == "Karmar78"
     validation = api_client.post("/api/v1/auth/login", json={})
     assert assert_status(validation, 422)["error"]["code"] == "validation_failed"
 
@@ -38,10 +38,9 @@ def test_authenticated_api_lifecycle(api_client: TestClient) -> None:
         201,
     )
     assert initialized["state"] == "active"
-    assert (
-        assert_status(api_client.get("/api/v1/auth/state"), 200)["instance_state"]
-        == "active"
-    )
+    active_state = assert_status(api_client.get("/api/v1/auth/state"), 200)
+    assert active_state["instance_state"] == "active"
+    assert active_state["username"] == "Karmar78"
 
     bad_login = api_client.post(
         "/api/v1/auth/login",

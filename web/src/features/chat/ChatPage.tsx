@@ -13,6 +13,9 @@ export function ChatPage() {
   const client = useMemo(() => getVoiceClient(), []);
   const [snapshot, setSnapshot] = useState<VoiceSnapshot>(initialSnapshot);
   const [text, setText] = useState('');
+  const [textBusy, setTextBusy] = useState(false);
+  const [textError, setTextError] = useState<string | null>(null);
+  const [interruptionRequested, setInterruptionRequested] = useState(false);
   useEffect(() => client.subscribe(setSnapshot), [client]);
 
   async function mainAction() {
@@ -21,14 +24,27 @@ export function ChatPage() {
     else if (snapshot.state === 'listening') client.finishTurn();
     else if (snapshot.state === 'responding') client.interrupt();
   }
-  function submitText(event: FormEvent) {
+  async function submitText(event: FormEvent) {
     event.preventDefault();
-    if (!text.trim()) return;
-    const request = !snapshot.conversationId
-      ? client.startAndSendText(text.trim())
-      : client.sendText(text.trim());
-    void Promise.resolve(request).catch(() => undefined);
-    setText('');
+    const draft = text.trim();
+    if (
+      !draft ||
+      textBusy ||
+      ['processing', 'reconnecting'].includes(snapshot.state) ||
+      (snapshot.state === 'responding' && !interruptionRequested)
+    )
+      return;
+    setTextBusy(true);
+    setTextError(null);
+    try {
+      if (!snapshot.conversationId) await client.startAndSendText(draft);
+      else await client.sendText(draft);
+      setText('');
+    } catch (error) {
+      setTextError(error instanceof Error ? error.message : 'Zprávu se nepodařilo odeslat.');
+    } finally {
+      setTextBusy(false);
+    }
   }
 
   return (
@@ -38,6 +54,7 @@ export function ChatPage() {
         <p className="muted">Přirozený hlasový a textový rozhovor s KájovoDagmar.</p>
       </header>
       {snapshot.error && <Feedback kind="error">{snapshot.error}</Feedback>}
+      {textError && <Feedback kind="error">{textError}</Feedback>}
       <div className="chat-grid">
         <section className="panel voice-panel" aria-label="Hlasová komunikace">
           <Orb state={snapshot.state} onActivate={() => void mainAction()} />
@@ -79,7 +96,14 @@ export function ChatPage() {
               </button>
             )}
             {snapshot.state === 'responding' && (
-              <button onClick={() => client.interrupt()}>Přerušit odpověď</button>
+              <button
+                onClick={() => {
+                  setInterruptionRequested(true);
+                  client.interrupt();
+                }}
+              >
+                Přerušit odpověď
+              </button>
             )}
             {snapshot.conversationId && (
               <button className="danger" onClick={() => void client.end()}>
@@ -150,7 +174,7 @@ export function ChatPage() {
                 </Feedback>
               ))}
           </div>
-          <form className="text-entry" onSubmit={submitText}>
+          <form className="text-entry" onSubmit={(event) => void submitText(event)}>
             <label className="sr-only" htmlFor="chat-text">
               Textová zpráva
             </label>
@@ -161,7 +185,15 @@ export function ChatPage() {
               onChange={(e) => setText(e.target.value)}
               placeholder="Napište zprávu…"
             />
-            <button className="primary" disabled={!text.trim()}>
+            <button
+              className="primary"
+              disabled={
+                !text.trim() ||
+                textBusy ||
+                ['processing', 'reconnecting'].includes(snapshot.state) ||
+                (snapshot.state === 'responding' && !interruptionRequested)
+              }
+            >
               Odeslat zprávu
             </button>
           </form>

@@ -15,6 +15,7 @@ vi.mock('./api/client', async (loadOriginal) => {
 vi.mock('./features/auth/AuthContext', () => ({
   useAuth: () => ({
     instanceState: 'active',
+    username: 'Karmar78',
     user: {
       id: 'account-1',
       username: 'Karmar78',
@@ -435,10 +436,6 @@ describe('authenticated management screens', () => {
   });
 
   it('searches, opens, edits, continues and deletes history', async () => {
-    vi.spyOn(window, 'prompt')
-      .mockReturnValueOnce('Nový název')
-      .mockReturnValueOnce('Nové shrnutí');
-    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
     render(<HistoryPage />);
     await screen.findByRole('button', { name: /Plán týdne/ });
     fireEvent.change(screen.getByLabelText('Hledat v celé historii'), {
@@ -450,6 +447,9 @@ describe('authenticated management screens', () => {
     expect(await screen.findByText('Naplánuj týden.')).toBeInTheDocument();
     expect(screen.getByText('Hlasová odpověď byla přerušena.')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Upravit název a shrnutí' }));
+    fireEvent.change(screen.getByLabelText('Název'), { target: { value: 'Nový název' } });
+    fireEvent.change(screen.getByLabelText('Shrnutí'), { target: { value: 'Nové shrnutí' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Uložit' }));
     await waitFor(() =>
       expect(mocks.api).toHaveBeenCalledWith(
         expect.stringContaining('/metadata'),
@@ -457,12 +457,16 @@ describe('authenticated management screens', () => {
       ),
     );
     fireEvent.click(screen.getByRole('button', { name: 'Odstranit konverzaci' }));
-    await waitFor(() => expect(confirmSpy).toHaveBeenCalled());
+    fireEvent.click(screen.getByRole('button', { name: /Klikněte znovu/ }));
+    await waitFor(() =>
+      expect(mocks.api).toHaveBeenCalledWith(
+        expect.stringContaining('/history/conversation-1'),
+        expect.objectContaining({ method: 'DELETE' }),
+      ),
+    );
   });
 
   it('creates and administers memory with confirmation', async () => {
-    vi.spyOn(window, 'prompt').mockReturnValue('Upravená preference');
-    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
     render(<MemoryPage />);
     fireEvent.change(screen.getByLabelText('Nová paměťová položka'), {
       target: { value: 'Nová poznámka' },
@@ -471,6 +475,12 @@ describe('authenticated management screens', () => {
     expect(await screen.findByRole('status')).toHaveTextContent('bezpečně uložena');
     fireEvent.click(await screen.findByRole('button', { name: /Karel preferuje/ }));
     fireEvent.click(screen.getByRole('button', { name: 'Opravit obsah' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Uložit úpravu' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Opravit obsah' }));
+    fireEvent.change(screen.getByDisplayValue('Karel preferuje stručné odpovědi.'), {
+      target: { value: 'Upravená preference' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Uložit úpravu' }));
     await waitFor(() =>
       expect(mocks.api).toHaveBeenCalledWith(
         '/memory/memory-1',
@@ -479,11 +489,10 @@ describe('authenticated management screens', () => {
     );
     fireEvent.click(screen.getByRole('button', { name: 'Označit jako neaktuální' }));
     fireEvent.click(screen.getByRole('button', { name: 'Odstranit vzpomínku' }));
-    await waitFor(() => expect(confirmSpy).toHaveBeenCalled());
+    fireEvent.click(screen.getByRole('button', { name: 'Potvrdit odstranění' }));
   });
 
   it('changes profile security fields and revokes another session', async () => {
-    vi.spyOn(window, 'confirm').mockReturnValue(true);
     render(<ProfilePage />);
     expect(await screen.findByText('Karmar78')).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText('Nová adresa'), {
@@ -503,6 +512,7 @@ describe('authenticated management screens', () => {
       target: { value: 'nové velmi dlouhé heslo' },
     });
     fireEvent.click(screen.getByRole('button', { name: 'Změnit heslo' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Ukončit relaci' }));
     fireEvent.click(screen.getByRole('button', { name: 'Ukončit relaci' }));
     await waitFor(() =>
       expect(mocks.api).toHaveBeenCalledWith('/auth/sessions/other', { method: 'DELETE' }),
@@ -526,6 +536,22 @@ describe('authenticated management screens', () => {
     history.unmount();
     render(<MemoryPage />);
     expect(await screen.findByRole('alert')).toHaveTextContent('Služba není dostupná.');
+  });
+
+  it('shows feedback for every memory mutation failure', async () => {
+    mocks.api.mockImplementation((path: string, init?: RequestInit) => {
+      if (path === '/memory/search') return Promise.resolve({ items: [memory] });
+      if (path === '/memory/memory-1' || path.endsWith('/restore'))
+        return Promise.reject(new ApiError('failed', 'Operace selhala.', 500));
+      return successfulApi(path, init);
+    });
+    render(<MemoryPage />);
+    fireEvent.click(await screen.findByRole('button', { name: /Karel preferuje/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Označit jako neaktuální' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('Operace selhala.');
+    fireEvent.click(screen.getByRole('button', { name: 'Odstranit vzpomínku' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Potvrdit odstranění' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('Operace selhala.');
   });
 
   it('renders every history state and safely cancels destructive prompts', async () => {
@@ -571,6 +597,35 @@ describe('authenticated management screens', () => {
     await waitFor(() =>
       expect(mocks.api).toHaveBeenCalledWith('/memory/memory-1/restore', expect.anything()),
     );
+  });
+
+  it('shows feedback when restoring deleted memory fails', async () => {
+    mocks.api.mockImplementation((path: string) => {
+      if (path === '/memory/search')
+        return Promise.resolve({ items: [{ ...memory, state: 'deleted' }] });
+      if (path.endsWith('/restore'))
+        return Promise.reject(new ApiError('failed', 'Obnovení selhalo.', 500));
+      return Promise.resolve({});
+    });
+    render(<MemoryPage />);
+    fireEvent.click(await screen.findByRole('button', { name: /Karel preferuje/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Obnovit vzpomínku' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('Obnovení selhalo.');
+  });
+
+  it('keeps memory create errors visible', async () => {
+    mocks.api.mockImplementation((path: string) => {
+      if (path === '/memory/search') return Promise.resolve({ items: [] });
+      if (path === '/memory')
+        return Promise.reject(new ApiError('failed', 'Uložení selhalo.', 500));
+      return Promise.resolve({});
+    });
+    render(<MemoryPage />);
+    fireEvent.change(screen.getByLabelText('Nová paměťová položka'), {
+      target: { value: 'Nová poznámka' },
+    });
+    fireEvent.submit(screen.getByRole('button', { name: 'Uložit do paměti' }).closest('form')!);
+    expect(await screen.findByRole('alert')).toHaveTextContent('Uložení selhalo.');
   });
 
   it('reports profile mutation failures and keeps the forms editable', async () => {
@@ -653,6 +708,9 @@ describe('settings behavior', () => {
     fireEvent.change(screen.getByLabelText('SMTP server'), {
       target: { value: 'smtp2.example.test' },
     });
+    fireEvent.change(screen.getByLabelText('Testovací příjemce'), {
+      target: { value: 'deliver-to@example.test' },
+    });
     fireEvent.click(screen.getByRole('button', { name: 'Uložit konfiguraci' }));
     fireEvent.click(screen.getByRole('button', { name: 'Provést skutečný test doručení' }));
     await waitFor(() =>
@@ -725,9 +783,6 @@ describe('settings behavior', () => {
   });
 
   it('operates audit filters, manual backup, verification and isolated restore', async () => {
-    vi.spyOn(window, 'prompt')
-      .mockReturnValueOnce('Před aktualizací')
-      .mockReturnValueOnce('OBNOVIT DO IZOLOVANÉHO PROSTŘEDÍ');
     render(<SettingsPage />);
     await screen.findByRole('heading', { name: 'Obecné' });
     fireEvent.click(screen.getByRole('button', { name: 'Provoz a audit' }));
@@ -738,9 +793,13 @@ describe('settings behavior', () => {
     fireEvent.change(screen.getByLabelText('Oblast'), { target: { value: 'memory' } });
     fireEvent.change(screen.getByLabelText('Výsledek'), { target: { value: 'success' } });
     fireEvent.click(screen.getByRole('button', { name: 'Filtrovat audit' }));
+    fireEvent.change(screen.getByLabelText('Účel ruční zálohy'), {
+      target: { value: 'Před aktualizací' },
+    });
     fireEvent.click(screen.getByRole('button', { name: 'Vytvořit ruční obnovovací bod' }));
     fireEvent.click(screen.getByRole('button', { name: 'Ověřit integritu' }));
     fireEvent.click(screen.getByRole('button', { name: 'Obnovit izolovaně' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Klikněte znovu pro restore test' }));
     fireEvent.click(screen.getByRole('button', { name: 'Exportovat filtrovaný audit' }));
     await waitFor(() => {
       expect(mocks.api).toHaveBeenCalledWith(
@@ -760,5 +819,10 @@ describe('settings behavior', () => {
         expect.objectContaining({ method: 'POST' }),
       );
     });
+    mocks.api.mockRejectedValueOnce(new Error('offline'));
+    fireEvent.click(screen.getByRole('button', { name: 'Obnovit stav' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Provozní stav se nepodařilo načíst.',
+    );
   });
 });

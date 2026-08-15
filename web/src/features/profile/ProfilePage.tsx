@@ -34,6 +34,7 @@ export function ProfilePage() {
   const [passwords, setPasswords] = useState({ current: '', next: '', confirmation: '' });
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [revokeCandidate, setRevokeCandidate] = useState<string | null>(null);
   async function load() {
     try {
       const [p, s] = await Promise.all([
@@ -88,14 +89,20 @@ export function ProfilePage() {
     }
   }
   async function revoke(session: Session) {
-    if (
-      session.current ||
-      !window.confirm(`Ukončit relaci zařízení „${session.device_label ?? 'Neznámé zařízení'}“?`)
-    )
+    if (session.current) return;
+    if (revokeCandidate !== session.id) {
+      setRevokeCandidate(session.id);
       return;
-    await api(`/auth/sessions/${session.id}`, { method: 'DELETE' });
-    setNotice('Vybraná relace byla zneplatněna.');
-    await load();
+    }
+    setError(null);
+    try {
+      await api(`/auth/sessions/${session.id}`, { method: 'DELETE' });
+      setRevokeCandidate(null);
+      setNotice('Vybraná relace byla zneplatněna.');
+      await load();
+    } catch (reason) {
+      setError(reason instanceof ApiError ? reason.message : 'Relaci se nepodařilo ukončit.');
+    }
   }
   return (
     <section className="stack" aria-labelledby="profile-title">

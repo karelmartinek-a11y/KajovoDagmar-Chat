@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import desc, select
+from sqlalchemy import desc, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from kajovodagmar.db.models import AuditEvent
@@ -34,6 +34,9 @@ class AuditService:
         target_id: UUID | None = None,
         details: dict[str, Any] | None = None,
     ) -> AuditEvent:
+        await session.execute(
+            text("SELECT pg_advisory_xact_lock(hashtext('kajovodagmar.audit_chain'))")
+        )
         previous = await session.scalar(select(AuditEvent).order_by(desc(AuditEvent.id)).limit(1))
         previous_hash = previous.event_hash if previous else None
         occurred_at = utc_now()
@@ -91,6 +94,13 @@ class AuditService:
         for key, value in details.items():
             if any(word in key.casefold() for word in forbidden):
                 result[key] = "[redacted]"
+            elif isinstance(value, dict):
+                result[key] = AuditService._sanitize(value)
+            elif isinstance(value, list):
+                result[key] = [
+                    AuditService._sanitize(item) if isinstance(item, dict) else item
+                    for item in value
+                ]
             elif isinstance(value, str) and len(value) > 500:
                 result[key] = value[:500]
             else:

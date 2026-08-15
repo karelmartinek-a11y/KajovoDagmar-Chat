@@ -37,13 +37,23 @@ class JobService:
         return job
 
     async def claim(
-        self, session: AsyncSession, worker_id: str, limit: int = 10
+        self,
+        session: AsyncSession,
+        worker_id: str,
+        limit: int = 10,
+        allowed_kinds: set[str] | frozenset[str] | None = None,
     ) -> list[BackgroundJob]:
+        if not allowed_kinds:
+            return []
         rows = list(
             (
                 await session.scalars(
                     select(BackgroundJob)
-                    .where(BackgroundJob.state == "queued", BackgroundJob.available_at <= utc_now())
+                    .where(
+                        BackgroundJob.state == "queued",
+                        BackgroundJob.available_at <= utc_now(),
+                        BackgroundJob.kind.in_(allowed_kinds),
+                    )
                     .order_by(BackgroundJob.priority, BackgroundJob.available_at)
                     .with_for_update(skip_locked=True)
                     .limit(limit)
