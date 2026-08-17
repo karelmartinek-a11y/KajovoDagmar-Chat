@@ -19,9 +19,9 @@ def upgrade() -> None:
         text(
             """
             INSERT INTO application_setting
-                (id, area, key, value, schema_version, effect_boundary, changed_by)
+                (id, area, key, value, schema_version, effect_boundary, changed_by, version)
             SELECT gen_random_uuid(), 'voice', 'voice_id', '{"value": "marin"}'::jsonb,
-                   '1.0.0', 'immediate', NULL
+                   '1.0.0', 'immediate', NULL, 1
             WHERE NOT EXISTS (
                 SELECT 1 FROM application_setting
                 WHERE area = 'voice' AND key = 'voice_id'
