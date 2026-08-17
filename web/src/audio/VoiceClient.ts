@@ -147,7 +147,7 @@ export class VoiceClient {
         // for a lost terminal websocket event, so the normal transition guard
         // may still believe the session is in an intermediate state.
         this.update({ state: 'listening', stateMessage: 'Naslouchám' });
-        this.update({ turnState: 'listening', audioRetryAvailable: true });
+        this.update({ turnState: 'listening' });
       }
     }, 20_000);
   }
