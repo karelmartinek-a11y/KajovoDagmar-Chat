@@ -112,10 +112,7 @@ jobs:
             -o UserKnownHostsFile="$RUNNER_TEMP/kajovodagmar-chat-ssh/known_hosts" \
             -p "$PROD_SSH_PORT" \
             "$PROD_SSH_USER@$PROD_SSH_HOST" \
-            # The currently installed deploy wrapper may predate the voice
-            # secret mount. Inject the stable path through sudo so the first
-            # post-migration deployment can bootstrap the updated wrapper.
-            "sudo -n env VOICE_SERVICE_KEY_FILE=/srv/hcasc/kajovodagmar-chat/shared/secrets/voice-service-api-key /usr/local/sbin/deploy-kajovodagmar-chat ${{ github.sha }}"
+            "sudo -n /usr/local/sbin/deploy-kajovodagmar-chat ${{ github.sha }}"
       - name: Verify production login and voice chat
         env:
           E2E_BASE_URL: https://chat.hcasc.cz
