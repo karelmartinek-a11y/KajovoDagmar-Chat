@@ -24,6 +24,18 @@ def test_production_compose_is_isolated_on_loopback() -> None:
     )
 
 
+def test_runtime_copies_the_root_only_voice_secret_before_dropping_privileges() -> None:
+    dockerfile = (ROOT / "deployment" / "Dockerfile").read_text()
+    entrypoint = (ROOT / "deployment" / "container-entrypoint.sh").read_text()
+    compose = (ROOT / "deployment" / "compose.yaml").read_text()
+    assert "su-exec" in dockerfile
+    assert 'ENTRYPOINT ["/usr/local/bin/kajovodagmar-entrypoint"]' in dockerfile
+    assert 'cp "$secret" "$runtime_secret"' in entrypoint
+    assert 'chown 10001:10001 "$runtime_secret"' in entrypoint
+    assert 'exec su-exec 10001:10001 "$@"' in entrypoint
+    assert "cap_add: [CHOWN, FOWNER, SETGID, SETUID]" in compose
+
+
 def test_deployment_requires_exact_sha_and_protected_ssh() -> None:
     deploy = (PRODUCTION / "deploy-kajovodagmar-chat").read_text()
     assert re.search(r"\^\[0-9a-f\]\{40\}\$", deploy)

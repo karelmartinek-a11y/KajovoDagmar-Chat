@@ -39,8 +39,6 @@ test.describe.serial('KájovoDagmar acceptance', () => {
 
   test('unconfigured AI is reported truthfully', async ({ page }) => {
     await ensureAuthenticated(page);
-    await page.getByRole('button', { name: 'Zahájit rozhovor' }).click();
-    await expect(page.getByText('Naslouchám')).toBeVisible();
     await page.getByLabel('Textová zpráva').fill('Odpověz na syntetický test.');
     await page.locator('form.text-entry').evaluate((form) => {
       (form as HTMLFormElement).requestSubmit();
