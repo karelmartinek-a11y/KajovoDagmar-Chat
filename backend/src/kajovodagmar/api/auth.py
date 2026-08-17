@@ -53,6 +53,7 @@ async def initialize(
         correlation_id=request.state.correlation_id,
     )
     account = await request.app.state.identity.initialize(session, payload, context)
+    await session.commit()
     return {"account_id": str(account.id), "state": account.state, "username": account.username}
 
 
