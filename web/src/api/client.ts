@@ -81,7 +81,8 @@ export async function apiEventStream(
   const headers = new Headers(init.headers);
   if (csrfToken) headers.set('X-CSRF-Token', csrfToken);
   const response = await fetch(`/api/v1${path}`, { ...init, headers, credentials: 'same-origin' });
-  if (!response.ok || !response.body) throw new ApiError('request_failed', 'Stream testu se nepodařilo spustit.', response.status);
+  if (!response.ok || !response.body)
+    throw new ApiError('request_failed', 'Stream testu se nepodařilo spustit.', response.status);
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   let buffer = '';

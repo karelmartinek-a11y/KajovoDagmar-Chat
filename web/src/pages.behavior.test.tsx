@@ -348,7 +348,11 @@ beforeEach(() => {
   vi.restoreAllMocks();
   mocks.api.mockImplementation(successfulApi);
   mocks.apiEventStream.mockImplementation(
-    async (_path: string, _init: RequestInit, onEvent: (event: Record<string, unknown>) => void) => {
+    async (
+      _path: string,
+      _init: RequestInit,
+      onEvent: (event: Record<string, unknown>) => void,
+    ) => {
       onEvent({ stage: 'Připojení k SMTP serveru' });
       onEvent({ stage: 'Výsledek', delivered: true });
     },
@@ -672,7 +676,9 @@ describe('settings behavior', () => {
     vi.spyOn(window, 'prompt').mockReturnValue('recipient@example.test');
     render(<SettingsPage />);
     const conversationLabel = (await screen.findByText('Pole balanced')).closest('label')!;
-    fireEvent.change(within(conversationLabel).getByRole('combobox'), { target: { value: 'detailed' } });
+    fireEvent.change(within(conversationLabel).getByRole('combobox'), {
+      target: { value: 'detailed' },
+    });
     fireEvent.click(screen.getByRole('button', { name: 'Uložit změny' }));
     expect(await screen.findByRole('status')).toHaveTextContent('trvale uloženo');
 
@@ -756,7 +762,9 @@ describe('settings behavior', () => {
     vi.spyOn(window, 'prompt').mockReturnValue(null);
     const view = render(<SettingsPage />);
     await screen.findByRole('heading', { name: 'Konverzace' });
-    expect(screen.getByText('Tato oblast zatím nemá žádné spravovatelné hodnoty.')).toBeInTheDocument();
+    expect(
+      screen.getByText('Tato oblast zatím nemá žádné spravovatelné hodnoty.'),
+    ).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Hlas a zvuk' }));
     expect(screen.getByRole('button', { name: 'Poslechnout vybraný hlas' })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Modely a poskytovatelé' }));

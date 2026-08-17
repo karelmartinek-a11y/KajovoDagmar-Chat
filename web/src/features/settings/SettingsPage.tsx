@@ -168,7 +168,11 @@ export function SettingsPage() {
   const [providerBusy, setProviderBusy] = useState(false);
   const [apiKeyVisible, setApiKeyVisible] = useState(false);
   const [apiKeyValue, setApiKeyValue] = useState('');
-  const [forensic, setForensic] = useState<{ title: string; steps: string[]; error?: string } | null>(null);
+  const [forensic, setForensic] = useState<{
+    title: string;
+    steps: string[];
+    error?: string;
+  } | null>(null);
   const [previewBusy, setPreviewBusy] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
 
@@ -183,7 +187,9 @@ export function SettingsPage() {
       ]);
       setSettings(all);
       setDraft(structuredClone(all));
-      const aiProviders = providerResult.items.filter((provider) => provider.provider_type !== 'smtp');
+      const aiProviders = providerResult.items.filter(
+        (provider) => provider.provider_type !== 'smtp',
+      );
       setProviders(aiProviders);
       const primaryProvider = aiProviders[0];
       if (primaryProvider && !providerForm.api_key) {
@@ -299,11 +305,18 @@ export function SettingsPage() {
     setForensic({ title: 'Ověřování OpenAI API klíče', steps: ['Probíhá připojení…'] });
     try {
       await api(`/providers/${provider.id}/verify`, { method: 'POST' });
-      setForensic({ title: 'Ověřování OpenAI API klíče', steps: ['Skutečné ověření klíče a načtení katalogu OpenAI: hotovo'] });
+      setForensic({
+        title: 'Ověřování OpenAI API klíče',
+        steps: ['Skutečné ověření klíče a načtení katalogu OpenAI: hotovo'],
+      });
       setNotice('Spojení a oprávnění OpenAI byly ověřeny.');
       await load();
     } catch (reason) {
-      setForensic({ title: 'Ověřování OpenAI API klíče', steps: ['Test selhal'], error: reason instanceof ApiError ? reason.message : 'Ověření selhalo.' });
+      setForensic({
+        title: 'Ověřování OpenAI API klíče',
+        steps: ['Test selhal'],
+        error: reason instanceof ApiError ? reason.message : 'Ověření selhalo.',
+      });
       setError(reason instanceof ApiError ? reason.message : 'Ověření poskytovatele selhalo.');
     } finally {
       setProviderBusy(false);
@@ -313,7 +326,9 @@ export function SettingsPage() {
   async function revealProviderKey(provider: Provider) {
     if (!window.confirm('Opravdu chcete dočasně zobrazit uložený API klíč?')) return;
     try {
-      const result = await api<{ api_key: string }>(`/providers/${provider.id}/key/reveal`, { method: 'POST' });
+      const result = await api<{ api_key: string }>(`/providers/${provider.id}/key/reveal`, {
+        method: 'POST',
+      });
       setApiKeyValue(result.api_key);
       setApiKeyVisible(true);
       window.setTimeout(() => setApiKeyVisible(false), 30_000);
@@ -394,17 +409,28 @@ export function SettingsPage() {
     if (!recipient) return;
     setForensic({ title: 'Test SMTP odesílání', steps: ['Připravuji bezpečný test…'] });
     try {
-      await apiEventStream('/notifications/email/test/stream', {
-        method: 'POST',
-        body: JSON.stringify({ recipient }),
-      }, (event) => {
-        setForensic((current) => ({ title: 'Test SMTP odesílání', steps: [...(current?.steps ?? []), stringValue(event.stage, 'Neznámý krok')] }));
-        if (event.delivered === false) throw new Error('SMTP server test odmítl.');
-      });
+      await apiEventStream(
+        '/notifications/email/test/stream',
+        {
+          method: 'POST',
+          body: JSON.stringify({ recipient }),
+        },
+        (event) => {
+          setForensic((current) => ({
+            title: 'Test SMTP odesílání',
+            steps: [...(current?.steps ?? []), stringValue(event.stage, 'Neznámý krok')],
+          }));
+          if (event.delivered === false) throw new Error('SMTP server test odmítl.');
+        },
+      );
       setNotice('Testovací e-mail byl skutečně předán SMTP serveru.');
       await load();
     } catch (reason) {
-      setForensic({ title: 'Test SMTP odesílání', steps: ['Test selhal'], error: reason instanceof ApiError ? reason.message : 'Test doručení selhal.' });
+      setForensic({
+        title: 'Test SMTP odesílání',
+        steps: ['Test selhal'],
+        error: reason instanceof ApiError ? reason.message : 'Test doručení selhal.',
+      });
       setError(reason instanceof ApiError ? reason.message : 'Test doručení selhal.');
     }
   }
@@ -417,14 +443,23 @@ export function SettingsPage() {
       setSmtp({ host: '', port: 587, username: '', password: '', sender: '', use_starttls: true });
       setNotice('SMTP konfigurace byla smazána.');
     } catch (reason) {
-      setError(reason instanceof ApiError ? reason.message : 'SMTP konfiguraci se nepodařilo smazat.');
+      setError(
+        reason instanceof ApiError ? reason.message : 'SMTP konfiguraci se nepodařilo smazat.',
+      );
     }
   }
 
   async function previewVoice() {
     setPreviewBusy(true);
     try {
-      const blob = await apiBlob('/voice/preview', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ language: stringValue(draft.conversation?.language?.value, 'cs'), voice: stringValue(draft.voice?.voice_id?.value, 'marin') }) });
+      const blob = await apiBlob('/voice/preview', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          language: stringValue(draft.conversation?.language?.value, 'cs'),
+          voice: stringValue(draft.voice?.voice_id?.value, 'marin'),
+        }),
+      });
       const url = URL.createObjectURL(blob);
       if (previewUrl) URL.revokeObjectURL(previewUrl);
       setPreviewUrl(url);
@@ -505,7 +540,8 @@ export function SettingsPage() {
       <header className="page-header">
         <h1 id="settings-title">Nastavení</h1>
         <p className="muted">
-          Jediné místo běžné konfigurace aplikace. Tajné hodnoty jsou běžně maskované a odhalují se jen na výslovné potvrzení.
+          Jediné místo běžné konfigurace aplikace. Tajné hodnoty jsou běžně maskované a odhalují se
+          jen na výslovné potvrzení.
         </p>
       </header>
       {error && <Feedback kind="error">{error}</Feedback>}
@@ -544,21 +580,65 @@ export function SettingsPage() {
               <div className="settings-split">
                 <section className="settings-subsection" aria-labelledby="openai-title">
                   <h3 id="openai-title">OpenAI API klíč</h3>
-                  <p className="muted">Jeden bezpečně uložený klíč pro běžný provoz i testování aplikace.</p>
+                  <p className="muted">
+                    Jeden bezpečně uložený klíč pro běžný provoz i testování aplikace.
+                  </p>
                   <div className="api-key-row">
-                    <input aria-label="OpenAI API klíč" type={apiKeyVisible ? 'text' : 'password'} value={apiKeyVisible ? apiKeyValue : (providers[0]?.secret_hint ?? '')} readOnly={!apiKeyVisible} placeholder="Klíč není uložen" />
-                    {providers[0]?.secret_present && <button type="button" onClick={() => { if (providers[0]) void revealProviderKey(providers[0]); }}>{apiKeyVisible ? 'Skrýt' : 'Zobrazit'}</button>}
+                    <input
+                      aria-label="OpenAI API klíč"
+                      type={apiKeyVisible ? 'text' : 'password'}
+                      value={apiKeyVisible ? apiKeyValue : (providers[0]?.secret_hint ?? '')}
+                      readOnly={!apiKeyVisible}
+                      placeholder="Klíč není uložen"
+                    />
+                    {providers[0]?.secret_present && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (providers[0]) void revealProviderKey(providers[0]);
+                        }}
+                      >
+                        {apiKeyVisible ? 'Skrýt' : 'Zobrazit'}
+                      </button>
+                    )}
                   </div>
-                  <small>Klíč se při běžném zobrazení maskuje. Odhalení je dočasné a auditované.</small>
+                  <small>
+                    Klíč se při běžném zobrazení maskuje. Odhalení je dočasné a auditované.
+                  </small>
                   <div className="row">
-                    <button className="primary" type="button" disabled={providerBusy} onClick={() => void (providers[0] ? verifyProvider(providers[0]) : undefined)}>Ověřit klíč</button>
-                    {providers[0]?.secret_present && <button type="button" onClick={() => { if (providers[0]) void revokeProviderKey(providers[0]); }}>Smazat klíč</button>}
+                    <button
+                      className="primary"
+                      type="button"
+                      disabled={providerBusy}
+                      onClick={() => void (providers[0] ? verifyProvider(providers[0]) : undefined)}
+                    >
+                      Ověřit klíč
+                    </button>
+                    {providers[0]?.secret_present && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (providers[0]) void revokeProviderKey(providers[0]);
+                        }}
+                      >
+                        Smazat klíč
+                      </button>
+                    )}
                   </div>
                 </section>
                 <section className="settings-subsection" aria-labelledby="models-title">
                   <h3 id="models-title">Doporučené modely</h3>
-                  <p className="muted">Modely se načítají online z OpenAI a u každé role se zobrazí jen použitelné možnosti.</p>
-                  <button type="button" disabled={providerBusy || !providers[0]} onClick={() => void (providers[0] ? verifyProvider(providers[0]) : undefined)}>Aktualizovat modely</button>
+                  <p className="muted">
+                    Modely se načítají online z OpenAI a u každé role se zobrazí jen použitelné
+                    možnosti.
+                  </p>
+                  <button
+                    type="button"
+                    disabled={providerBusy || !providers[0]}
+                    onClick={() => void (providers[0] ? verifyProvider(providers[0]) : undefined)}
+                  >
+                    Aktualizovat modely
+                  </button>
                 </section>
               </div>
               <div className="model-explainer" role="note">
@@ -673,47 +753,148 @@ export function SettingsPage() {
               ))}
               <section className="settings-subsection" aria-labelledby="smtp-title">
                 <h3 id="smtp-title">SMTP odesílání</h3>
-                <p className="muted">Samostatné nastavení odchozí pošty. SMTP není poskytovatel AI.</p>
+                <p className="muted">
+                  Samostatné nastavení odchozí pošty. SMTP není poskytovatel AI.
+                </p>
                 <form className="settings-fields" onSubmit={(e) => void saveEmail(e)}>
-                  <label>SMTP server<input value={smtp.host} onChange={(e) => setSmtp({ ...smtp, host: e.target.value })} required /></label>
-                  <label>Port<input type="number" min={1} max={65535} value={smtp.port} onChange={(e) => setSmtp({ ...smtp, port: Number(e.target.value) })} required /><small>465 = SSL/TLS, 587 = STARTTLS.</small></label>
-                  <label>Uživatelské jméno<input value={smtp.username} onChange={(e) => setSmtp({ ...smtp, username: e.target.value })} /></label>
-                  <label>Heslo SMTP<input type="password" value={smtp.password} onChange={(e) => setSmtp({ ...smtp, password: e.target.value })} /><small>Prázdné heslo zachová stávající.</small></label>
-                  <label>Adresa odesílatele<input type="email" value={smtp.sender} onChange={(e) => setSmtp({ ...smtp, sender: e.target.value })} required /></label>
-                  <label>Testovací příjemce<input type="email" value={emailTestRecipient} onChange={(e) => setEmailTestRecipient(e.target.value)} placeholder={stringValue(emailState.sender, smtp.sender)} /></label>
-                  <div className="row"><button className="primary">Uložit SMTP</button><button type="button" onClick={() => void deleteEmail()}>Smazat</button><button type="button" disabled={!emailState.configured && !smtp.host} onClick={() => void testEmail()}>Otestovat odeslání</button></div>
+                  <label>
+                    SMTP server
+                    <input
+                      value={smtp.host}
+                      onChange={(e) => setSmtp({ ...smtp, host: e.target.value })}
+                      required
+                    />
+                  </label>
+                  <label>
+                    Port
+                    <input
+                      type="number"
+                      min={1}
+                      max={65535}
+                      value={smtp.port}
+                      onChange={(e) => setSmtp({ ...smtp, port: Number(e.target.value) })}
+                      required
+                    />
+                    <small>465 = SSL/TLS, 587 = STARTTLS.</small>
+                  </label>
+                  <label>
+                    Uživatelské jméno
+                    <input
+                      value={smtp.username}
+                      onChange={(e) => setSmtp({ ...smtp, username: e.target.value })}
+                    />
+                  </label>
+                  <label>
+                    Heslo SMTP
+                    <input
+                      type="password"
+                      value={smtp.password}
+                      onChange={(e) => setSmtp({ ...smtp, password: e.target.value })}
+                    />
+                    <small>Prázdné heslo zachová stávající.</small>
+                  </label>
+                  <label>
+                    Adresa odesílatele
+                    <input
+                      type="email"
+                      value={smtp.sender}
+                      onChange={(e) => setSmtp({ ...smtp, sender: e.target.value })}
+                      required
+                    />
+                  </label>
+                  <label>
+                    Testovací příjemce
+                    <input
+                      type="email"
+                      value={emailTestRecipient}
+                      onChange={(e) => setEmailTestRecipient(e.target.value)}
+                      placeholder={stringValue(emailState.sender, smtp.sender)}
+                    />
+                  </label>
+                  <div className="row">
+                    <button className="primary">Uložit SMTP</button>
+                    <button type="button" onClick={() => void deleteEmail()}>
+                      Smazat
+                    </button>
+                    <button
+                      type="button"
+                      disabled={!emailState.configured && !smtp.host}
+                      onClick={() => void testEmail()}
+                    >
+                      Otestovat odeslání
+                    </button>
+                  </div>
                 </form>
               </section>
               <button className="primary" onClick={() => void saveArea('models')}>
                 Uložit výběr modelů
               </button>
-              <button type="button" onClick={() => providers[0] && void applyRecommended(providers[0])} disabled={!providers[0]}>Obnovit doporučené modely</button>
+              <button
+                type="button"
+                onClick={() => providers[0] && void applyRecommended(providers[0])}
+                disabled={!providers[0]}
+              >
+                Obnovit doporučené modely
+              </button>
             </section>
           )}
-          {activeArea !== 'models' &&
-            activeArea !== 'privacy' &&
-            activeArea !== 'operations' && (
-              <section className="panel stack">
-                <h2>{areaNames[activeArea]}</h2>
-                {activeArea === 'voice' ? (
-                  <>
-                    <div className="settings-fields">
-                      {draft.voice?.voice_id && <label>Hlas Dagmar<select value={String(draft.voice.voice_id.value)} onChange={(event) => change('voice', 'voice_id', event.target.value)}>{Object.entries(VOICE_LABELS).map(([voice, label]) => <option key={voice} value={voice}>{label}</option>)}</select><small>Technické jméno: {String(draft.voice.voice_id.value)}.</small></label>}
-                    </div>
-                    <div className="row"><button type="button" onClick={() => void previewVoice()} disabled={previewBusy}>{previewBusy ? 'Připravuji náhled…' : 'Poslechnout vybraný hlas'}</button>{previewUrl && <audio controls src={previewUrl} aria-label="Náhled vybraného hlasu" />}</div>
-                    {renderArea('voice', Object.fromEntries(Object.entries(draft.voice ?? {}).filter(([key]) => key !== 'voice_id')), change, availableModels)}
-                  </>
-                ) : renderArea(activeArea, draft[activeArea], change, availableModels)}
-                <div className="row">
-                  <button className="primary" onClick={() => void saveArea(activeArea)}>
-                    Uložit změny
-                  </button>
-                  <button onClick={() => setDraft(structuredClone(settings))}>
-                    Zahodit neuložené změny
-                  </button>
-                </div>
-              </section>
-            )}
+          {activeArea !== 'models' && activeArea !== 'privacy' && activeArea !== 'operations' && (
+            <section className="panel stack">
+              <h2>{areaNames[activeArea]}</h2>
+              {activeArea === 'voice' ? (
+                <>
+                  <div className="settings-fields">
+                    {draft.voice?.voice_id && (
+                      <label>
+                        Hlas Dagmar
+                        <select
+                          value={String(draft.voice.voice_id.value)}
+                          onChange={(event) => change('voice', 'voice_id', event.target.value)}
+                        >
+                          {Object.entries(VOICE_LABELS).map(([voice, label]) => (
+                            <option key={voice} value={voice}>
+                              {label}
+                            </option>
+                          ))}
+                        </select>
+                        <small>Technické jméno: {String(draft.voice.voice_id.value)}.</small>
+                      </label>
+                    )}
+                  </div>
+                  <div className="row">
+                    <button
+                      type="button"
+                      onClick={() => void previewVoice()}
+                      disabled={previewBusy}
+                    >
+                      {previewBusy ? 'Připravuji náhled…' : 'Poslechnout vybraný hlas'}
+                    </button>
+                    {previewUrl && (
+                      <audio controls src={previewUrl} aria-label="Náhled vybraného hlasu" />
+                    )}
+                  </div>
+                  {renderArea(
+                    'voice',
+                    Object.fromEntries(
+                      Object.entries(draft.voice ?? {}).filter(([key]) => key !== 'voice_id'),
+                    ),
+                    change,
+                    availableModels,
+                  )}
+                </>
+              ) : (
+                renderArea(activeArea, draft[activeArea], change, availableModels)
+              )}
+              <div className="row">
+                <button className="primary" onClick={() => void saveArea(activeArea)}>
+                  Uložit změny
+                </button>
+                <button onClick={() => setDraft(structuredClone(settings))}>
+                  Zahodit neuložené změny
+                </button>
+              </div>
+            </section>
+          )}
           {activeArea === 'privacy' && (
             <section className="panel stack">
               <h2>Soukromí a data</h2>
@@ -926,10 +1107,31 @@ export function SettingsPage() {
       </div>
       {forensic && (
         <div className="forensic-backdrop" role="presentation" onClick={() => setForensic(null)}>
-          <section className="forensic-modal" role="dialog" aria-modal="true" aria-labelledby="forensic-title" onClick={(event) => event.stopPropagation()}>
-            <div className="row"><h2 id="forensic-title">{forensic.title}</h2><button type="button" aria-label="Zavřít forenzní okno" onClick={() => setForensic(null)}>×</button></div>
-            <ol>{forensic.steps.map((step) => <li key={step}>{step}</li>)}</ol>
-            <p className="muted">Citlivé údaje jsou během testu redigované. Klíče, hesla a obsah zpráv se nezobrazují.</p>
+          <section
+            className="forensic-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="forensic-title"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="row">
+              <h2 id="forensic-title">{forensic.title}</h2>
+              <button
+                type="button"
+                aria-label="Zavřít forenzní okno"
+                onClick={() => setForensic(null)}
+              >
+                ×
+              </button>
+            </div>
+            <ol>
+              {forensic.steps.map((step) => (
+                <li key={step}>{step}</li>
+              ))}
+            </ol>
+            <p className="muted">
+              Citlivé údaje jsou během testu redigované. Klíče, hesla a obsah zpráv se nezobrazují.
+            </p>
             {forensic.error && <Feedback kind="error">{forensic.error}</Feedback>}
           </section>
         </div>
@@ -989,7 +1191,13 @@ function renderArea(
             <input value={String(item.value)} onChange={(e) => change(area, key, e.target.value)} />
           )}
           <small>
-            {item.description}{item.type === 'integer' && (key.includes('seconds') ? ' Hodnota se zadává v sekundách.' : '')}{item.minimum !== null && item.maximum !== null ? ` Povolený rozsah: ${item.minimum}–${item.maximum}.` : ''} Účinnost: {effectLabel(item.effect_boundary)}.
+            {item.description}
+            {item.type === 'integer' &&
+              (key.includes('seconds') ? ' Hodnota se zadává v sekundách.' : '')}
+            {item.minimum !== null && item.maximum !== null
+              ? ` Povolený rozsah: ${item.minimum}–${item.maximum}.`
+              : ''}{' '}
+            Účinnost: {effectLabel(item.effect_boundary)}.
           </small>
         </label>
       ))}

@@ -25,7 +25,8 @@ export function ChatPage() {
     void api<{ conversation?: { language?: { value?: unknown } } }>('/settings')
       .then((settings) => {
         const language = settings.conversation?.language?.value;
-        if (typeof language === 'string' && language in LANGUAGE_LABELS) setConversationLanguage(language);
+        if (typeof language === 'string' && language in LANGUAGE_LABELS)
+          setConversationLanguage(language);
       })
       .catch(() => undefined);
   }, []);
@@ -85,7 +86,7 @@ export function ChatPage() {
             {(snapshot.state === 'ready' ||
               snapshot.state === 'ended' ||
               snapshot.state === 'error') && (
-                <button className="primary" onClick={() => void client.start(conversationLanguage)}>
+              <button className="primary" onClick={() => void client.start(conversationLanguage)}>
                 Zahájit rozhovor
               </button>
             )}
