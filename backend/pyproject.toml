@@ -72,9 +72,6 @@ source = ["backend/src/kajovodagmar"]
 omit = [
   "*/kajovodagmar/cli.py",
   "*/kajovodagmar/diagnostics/voice_live_probe.py",
-  "*/kajovodagmar/diagnostics/voice_forensics.py",
-  "*/kajovodagmar/security/voice_service.py",
-  "*/kajovodagmar/api/voice_preview.py",
 ]
 
 [tool.coverage.report]
