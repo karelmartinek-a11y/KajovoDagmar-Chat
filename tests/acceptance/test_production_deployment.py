@@ -81,6 +81,18 @@ def test_production_workflow_is_post_release_and_secret_scoped() -> None:
     assert workflow["concurrency"]["cancel-in-progress"] is False
 
 
+def test_production_voice_forensics_uses_the_supported_cli_and_redacts_key_material() -> (
+    None
+):
+    wrapper = (ROOT / "scripts" / "production_voice_forensics.sh").read_text()
+    implementation = (
+        ROOT / "backend" / "src" / "kajovodagmar" / "diagnostics" / "voice_forensics.py"
+    ).read_text()
+    assert 'kajovodagmar voice-forensics >"$report"' in wrapper
+    assert "voice-forensics --json" not in wrapper
+    assert '"key_prefix"' not in implementation
+
+
 def test_nginx_vhost_is_domain_scoped_and_websocket_aware() -> None:
     nginx = (PRODUCTION / "chat.hcasc.cz.nginx.conf").read_text()
     assert nginx.count("server_name chat.hcasc.cz;") == 2
