@@ -101,7 +101,17 @@ async def run() -> dict[str, Any]:
             )
         )
         await _receive_until(socket, server_events, "assistant.audio.end", audio_parts)
-        await socket.send(_event("session.end", 3, {}))
+        await socket.send(
+            _event(
+                "turn.text",
+                3,
+                {"text": "Potvrď druhý tah automatického hlasového testu."},
+            )
+        )
+        await _receive_until(socket, server_events, "assistant.audio.end", audio_parts)
+        if sum(event.get("type") == "assistant.text" for event in server_events) != 2:
+            raise RuntimeError("realtime conversation did not complete two assistant turns")
+        await socket.send(_event("session.end", 4, {}))
         await _receive_until(socket, server_events, "session.ended", audio_parts)
     report["checks"]["realtime"] = {
         "status": "pass",
@@ -109,6 +119,7 @@ async def run() -> dict[str, Any]:
         "input_pcm_sha256": hashlib.sha256(input_pcm).hexdigest(),
         "output_audio_sha256": hashlib.sha256(b"".join(audio_parts)).hexdigest(),
         "output_audio_bytes": sum(len(part) for part in audio_parts),
+        "turns": 2,
     }
     report["status"] = "pass"
     report["duration_ms"] = round((time.perf_counter() - started) * 1000)

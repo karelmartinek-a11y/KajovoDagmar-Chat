@@ -475,7 +475,28 @@ class OrchestrationService:
             attempt.completed_at = utc_now()
             attempt.latency_ms = round((perf_counter() - started) * 1000)
             attempt.error_code = getattr(exc, "code", exc.__class__.__name__)
+            attempt.usage = self._safe_provider_error_details(exc)
             raise
+
+    @staticmethod
+    def _safe_provider_error_details(exc: Exception) -> dict[str, Any]:
+        """Persist only non-content provider diagnostics for failed attempts."""
+        if not isinstance(exc, DomainError):
+            return {}
+        allowed = {
+            "status",
+            "endpoint",
+            "provider_request_id",
+            "provider_error_type",
+            "provider_error_code",
+            "provider_param",
+        }
+        details = {
+            key: value
+            for key, value in (exc.details or {}).items()
+            if key in allowed and isinstance(value, (str, int, float, bool))
+        }
+        return {"provider_error": details} if details else {}
 
     async def _build_context(
         self,

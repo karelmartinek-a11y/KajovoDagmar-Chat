@@ -90,6 +90,8 @@ def test_production_workflow_is_post_release_and_secret_scoped() -> None:
     assert voice_step["env"]["E2E_PASSWORD"] == "${{ secrets.PASS }}"
     assert voice_step["env"]["E2E_BASE_URL"] == "https://chat.hcasc.cz"
     assert "production-voice.spec.ts" in voice_step["run"]
+    e2e = (ROOT / "web" / "e2e" / "production-voice.spec.ts").read_text()
+    assert "Druhý tah produkční E2E" in e2e
     assert workflow["concurrency"]["cancel-in-progress"] is False
 
 
@@ -103,6 +105,21 @@ def test_production_voice_forensics_uses_the_supported_cli_and_redacts_key_mater
     assert 'exec -T --user root web kajovodagmar voice-forensics >"$report"' in wrapper
     assert "voice-forensics --json" not in wrapper
     assert '"key_prefix"' not in implementation
+    assert '"turn.text"' in implementation
+    assert '"turns": 2' in implementation
+
+
+def test_production_live_probe_checks_a_real_two_turn_conversation() -> None:
+    probe = (
+        ROOT
+        / "backend"
+        / "src"
+        / "kajovodagmar"
+        / "diagnostics"
+        / "voice_live_probe.py"
+    ).read_text()
+    assert 'ChatMessage(role="assistant", content=chat.text)' in probe
+    assert '"turns": 2' in probe
 
 
 def test_nginx_vhost_is_domain_scoped_and_websocket_aware() -> None:

@@ -44,6 +44,19 @@ test.describe('Production voice smoke test', () => {
     });
     await expect(assistantMessages.nth(assistantCount)).toBeVisible({ timeout: 60_000 });
     await expect(page.getByText('Naslouchám', { exact: true })).toBeVisible({ timeout: 60_000 });
+    const followUp = `Druhý tah produkční E2E ${Date.now()}: odpověz pouze slovem navazuji.`;
+    const assistantCountAfterFirstTurn = await assistantMessages.count();
+    await page.getByLabel('Textová zpráva').fill(followUp);
+    await page.locator('form.text-entry').evaluate((form) => {
+      (form as HTMLFormElement).requestSubmit();
+    });
+    await expect(page.locator('article.message.user', { hasText: followUp })).toBeVisible({
+      timeout: 30_000,
+    });
+    await expect(assistantMessages.nth(assistantCountAfterFirstTurn)).toBeVisible({
+      timeout: 60_000,
+    });
+    await expect(page.getByText('Naslouchám', { exact: true })).toBeVisible({ timeout: 60_000 });
     expect(await page.getByRole('alert').allTextContents()).toEqual([]);
 
     await page.getByRole('button', { name: 'Ukončit rozhovor' }).click();

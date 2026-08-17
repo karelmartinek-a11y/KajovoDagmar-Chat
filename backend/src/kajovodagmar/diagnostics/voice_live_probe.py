@@ -90,10 +90,38 @@ async def run_probe() -> dict[str, Any]:  # pragma: no cover - exercised as a co
             )
             if not chat.text or not isinstance(chat.structured, dict):
                 raise RuntimeError("conversation returned an invalid structured response")
+            follow_up = await runtime.chat(
+                ChatRequest(
+                    model=model.external_id,
+                    messages=(
+                        ChatMessage(
+                            role="user",
+                            content="Vrať potvrzení automatického diagnostického testu.",
+                        ),
+                        ChatMessage(role="assistant", content=chat.text),
+                        ChatMessage(
+                            role="user",
+                            content="Potvrď druhý tah automatického diagnostického testu.",
+                        ),
+                    ),
+                    response_schema={
+                        "type": "object",
+                        "properties": {"answer": {"type": "string"}},
+                        "required": ["answer"],
+                        "additionalProperties": False,
+                    },
+                    temperature=0.0,
+                    timeout_seconds=30.0,
+                    capabilities=getattr(model, "capabilities", None),
+                )
+            )
+            if not follow_up.text or not isinstance(follow_up.structured, dict):
+                raise RuntimeError("conversation follow-up returned an invalid structured response")
             result["checks"]["conversation"] = {
                 "status": "pass",
                 "model": model.external_id,
-                "provider_request_id": chat.provider_response_id,
+                "turns": 2,
+                "provider_request_ids": [chat.provider_response_id, follow_up.provider_response_id],
                 "duration_ms": round((time.perf_counter() - started) * 1000),
             }
 
