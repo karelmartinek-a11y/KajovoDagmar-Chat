@@ -58,4 +58,4 @@ volumes:
 
 secrets:
   voice-service-api-key:
-    file: ${VOICE_SERVICE_KEY_FILE:?Voice service key file is required}
+    file: ${VOICE_SERVICE_KEY_FILE:-/srv/hcasc/kajovodagmar-chat/shared/secrets/voice-service-api-key}
