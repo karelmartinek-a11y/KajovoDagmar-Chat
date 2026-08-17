@@ -594,6 +594,7 @@ export class VoiceClient {
   async end(): Promise<void> {
     const conversationId = this.snapshot.conversationId;
     this.ending = true;
+    this.clearResponseRecoveryTimer();
     if (this.reconnectTimer !== null) window.clearTimeout(this.reconnectTimer);
     this.reconnectTimer = null;
     if (this.socket?.readyState === WebSocket.OPEN) this.send('session.end', {});
@@ -827,6 +828,7 @@ export class VoiceClient {
         });
         break;
       case 'session.ended':
+        this.clearResponseRecoveryTimer();
         this.move('ended', 'Rozhovor byl ukončen');
         break;
       case 'resync.required':
@@ -890,6 +892,7 @@ export class VoiceClient {
   }
 
   private fail(message: string): void {
+    this.clearResponseRecoveryTimer();
     this.update({ error: message, microphoneActive: false, captureState: 'failed' });
     this.move('error', 'Vyžaduje pozornost');
   }
