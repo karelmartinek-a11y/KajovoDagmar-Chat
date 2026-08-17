@@ -305,6 +305,24 @@ async def test_openai_compatible_provider_protocol(
         if request.url.path.endswith("/responses"):
             body = json.loads(request.content)
             assert body["text"]["format"]["strict"] is True
+            assert body["input"] == [
+                {
+                    "role": "system",
+                    "content": [{"type": "input_text", "text": "Pravidla"}],
+                },
+                {
+                    "role": "user",
+                    "content": [{"type": "input_text", "text": "První dotaz"}],
+                },
+                {
+                    "role": "assistant",
+                    "content": [{"type": "output_text", "text": "První odpověď"}],
+                },
+                {
+                    "role": "user",
+                    "content": [{"type": "input_text", "text": "Druhý dotaz"}],
+                },
+            ]
             return httpx.Response(
                 200,
                 json={
@@ -349,7 +367,12 @@ async def test_openai_compatible_provider_protocol(
     assert models[0].external_id == "model-1"
     request = ChatRequest(
         model="model-1",
-        messages=(ChatMessage("user", "Ahoj"),),
+        messages=(
+            ChatMessage("system", "Pravidla"),
+            ChatMessage("user", "První dotaz"),
+            ChatMessage("assistant", "První odpověď"),
+            ChatMessage("user", "Druhý dotaz"),
+        ),
         response_schema={
             "type": "object",
             "properties": {"answer": {"type": "string"}},

@@ -191,6 +191,88 @@ async def test_model_call_records_success_and_contract_failure() -> None:
 
 
 @pytest.mark.asyncio
+async def test_model_call_records_only_redacted_provider_diagnostics() -> None:
+    orchestration = service()
+    provider = SimpleNamespace(
+        chat=AsyncMock(
+            side_effect=DomainError(
+                "provider_invalid_parameter",
+                "Nastavení požadavku není kompatibilní s vybraným modelem.",
+                502,
+                {
+                    "status": 400,
+                    "endpoint": "/v1/responses",
+                    "provider_request_id": "req-safe-1",
+                    "provider_error_type": "invalid_request_error",
+                    "provider_error_code": "invalid_parameter",
+                    "provider_param": "input[1].content[0].type",
+                    "message": "user content must not be stored",
+                    "prompt": "user prompt must not be stored",
+                },
+            )
+        )
+    )
+    orchestration.providers.runtime.return_value = provider
+    session = FakeSession()
+    run = OrchestrationRun(
+        id=uuid4(),
+        account_id=uuid4(),
+        conversation_id=uuid4(),
+        source_message_id=uuid4(),
+        provider_id=uuid4(),
+        model_id=uuid4(),
+        state="running",
+        orchestration_version="1",
+        prompt_version="1",
+        context_manifest={},
+        usage={},
+        attempt_count=0,
+    )
+    provider_row = ProviderConfiguration(
+        id=run.provider_id,
+        provider_type="openai_compatible",
+        display_name="Test",
+        base_url="https://provider.invalid",
+        enabled=True,
+        verification_state="verified",
+        capabilities={},
+    )
+    model = ModelCatalogEntry(
+        id=run.model_id,
+        provider_id=provider_row.id,
+        external_id="chat-model",
+        display_name="Chat",
+        role="conversation",
+        capabilities={"chat": True},
+        available=True,
+    )
+
+    with pytest.raises(DomainError, match="Nastavení požadavku"):
+        await orchestration._call_model(
+            cast(Any, session),
+            run,
+            provider_row,
+            model,
+            "citlivý prompt",
+            [],
+            temperature=0.1,
+        )
+
+    attempt = session.added[-1]
+    assert attempt.state == "failed"
+    assert attempt.usage == {
+        "provider_error": {
+            "status": 400,
+            "endpoint": "/v1/responses",
+            "provider_request_id": "req-safe-1",
+            "provider_error_type": "invalid_request_error",
+            "provider_error_code": "invalid_parameter",
+            "provider_param": "input[1].content[0].type",
+        }
+    }
+
+
+@pytest.mark.asyncio
 async def test_context_bundle_contains_ranked_memory_sources_and_tool_evidence() -> (
     None
 ):

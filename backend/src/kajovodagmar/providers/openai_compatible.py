@@ -12,6 +12,7 @@ from kajovodagmar.errors import CapabilityUnavailableError, DomainError
 from kajovodagmar.observability.tracing import traced
 from kajovodagmar.providers.contracts import (
     AIProvider,
+    ChatMessage,
     ChatRequest,
     ChatResult,
     ProviderModel,
@@ -29,6 +30,15 @@ class OpenAICompatibleProvider(AIProvider):
 
     def _headers(self) -> dict[str, str]:
         return {"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"}
+
+    @staticmethod
+    def _response_input_message(message: ChatMessage) -> dict[str, Any]:
+        """Convert persisted conversation history to Responses API input items."""
+        content_type = "output_text" if message.role == "assistant" else "input_text"
+        return {
+            "role": message.role,
+            "content": [{"type": content_type, "text": message.content}],
+        }
 
     @staticmethod
     def _strict_schema_compatible(schema: dict[str, Any]) -> bool:
@@ -114,10 +124,7 @@ class OpenAICompatibleProvider(AIProvider):
             )
         payload: dict[str, Any] = {
             "model": request.model,
-            "input": [
-                {"role": m.role, "content": [{"type": "input_text", "text": m.content}]}
-                for m in request.messages
-            ],
+            "input": [self._response_input_message(message) for message in request.messages],
             "text": {
                 "format": {
                     "type": "json_schema",

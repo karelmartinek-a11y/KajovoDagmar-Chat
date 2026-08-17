@@ -1,4 +1,5 @@
 from types import SimpleNamespace
+from typing import Any
 from uuid import uuid4
 
 import pytest
@@ -61,8 +62,14 @@ async def test_live_probe_transcribes_raw_pcm_from_speech_provider(
             return None
 
     class ProbeRuntime:
-        async def chat(self, _request: object) -> ChatResult:
-            return ChatResult("chat-1", "hotovo", {"answer": "hotovo"}, None, None)
+        def __init__(self) -> None:
+            self.requests: list[Any] = []
+
+        async def chat(self, request: object) -> ChatResult:
+            self.requests.append(request)
+            return ChatResult(
+                f"chat-{len(self.requests)}", "hotovo", {"answer": "hotovo"}, None, None
+            )
 
         async def transcribe(
             self, audio: bytes, *, model: str, language: str
@@ -87,8 +94,11 @@ async def test_live_probe_transcribes_raw_pcm_from_speech_provider(
             yield SpeechChunk(sequence=0, pcm16_24000_mono=pcm, final=True)
 
     class ProbeProviders:
+        latest_runtime: ProbeRuntime | None = None
+
         def __init__(self, *_args: object) -> None:
             self.runtime_instance = ProbeRuntime()
+            ProbeProviders.latest_runtime = self.runtime_instance
 
         async def runtime(self, _session: object, _provider: object) -> ProbeRuntime:
             return self.runtime_instance
@@ -114,3 +124,14 @@ async def test_live_probe_transcribes_raw_pcm_from_speech_provider(
         "transcription",
         "embeddings",
     }
+    runtime = ProbeProviders.latest_runtime
+    assert runtime is not None
+    assert len(runtime.requests) == 2
+    assert [
+        (message.role, message.content) for message in runtime.requests[1].messages
+    ] == [
+        ("user", "Vrať potvrzení automatického diagnostického testu."),
+        ("assistant", "hotovo"),
+        ("user", "Potvrď druhý tah automatického diagnostického testu."),
+    ]
+    assert result["checks"]["conversation"]["turns"] == 2
