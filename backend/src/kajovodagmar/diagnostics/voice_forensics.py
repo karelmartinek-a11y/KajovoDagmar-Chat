@@ -61,7 +61,6 @@ async def run() -> dict[str, Any]:
         "status": "fail",
         "checks": {},
         "started_at": time.time(),
-        "key_prefix": key[:12],
     }
     headers = {"Authorization": f"Bearer {key}"}
     async with httpx.AsyncClient(base_url=base_url, headers=headers, timeout=30.0) as client:
