@@ -30,6 +30,33 @@ class OpenAICompatibleProvider(AIProvider):
     def _headers(self) -> dict[str, str]:
         return {"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"}
 
+    @staticmethod
+    def _strict_schema_compatible(schema: dict[str, Any]) -> bool:
+        """Check the subset accepted by OpenAI strict JSON-schema outputs.
+
+        Application contracts intentionally contain optional fields and free-form
+        tool arguments. Those are valid JSON Schema, but are not valid in the
+        provider's strict subset. The response is still validated by Pydantic
+        after decoding when strict mode is disabled.
+        """
+
+        def visit(node: Any) -> bool:
+            if isinstance(node, dict):
+                if node.get("type") == "object":
+                    properties = node.get("properties", {})
+                    required = node.get("required", [])
+                    if (
+                        set(properties) != set(required)
+                        or node.get("additionalProperties") is not False
+                    ):
+                        return False
+                return all(visit(value) for value in node.values())
+            if isinstance(node, list):
+                return all(visit(value) for value in node)
+            return True
+
+        return visit(schema)
+
     @traced("provider.list_models")
     async def list_models(self) -> list[ProviderModel]:
         try:
@@ -95,7 +122,7 @@ class OpenAICompatibleProvider(AIProvider):
                 "format": {
                     "type": "json_schema",
                     "name": "kajovodagmar_decision",
-                    "strict": True,
+                    "strict": self._strict_schema_compatible(request.response_schema),
                     "schema": request.response_schema,
                 }
             },

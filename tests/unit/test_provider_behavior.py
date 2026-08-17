@@ -350,7 +350,12 @@ async def test_openai_compatible_provider_protocol(
     request = ChatRequest(
         model="model-1",
         messages=(ChatMessage("user", "Ahoj"),),
-        response_schema={"type": "object"},
+        response_schema={
+            "type": "object",
+            "properties": {"answer": {"type": "string"}},
+            "required": ["answer"],
+            "additionalProperties": False,
+        },
         temperature=0.1,
         timeout_seconds=5,
     )
@@ -423,3 +428,22 @@ def test_provider_response_validation_branches() -> None:
     )
     with pytest.raises(DomainError, match="nevrátil text"):
         OpenAICompatibleProvider._response_text({})
+
+
+def test_provider_detects_non_strict_json_schema() -> None:
+    assert OpenAICompatibleProvider._strict_schema_compatible(
+        {
+            "type": "object",
+            "properties": {"answer": {"type": "string"}},
+            "required": ["answer"],
+            "additionalProperties": False,
+        }
+    )
+    assert not OpenAICompatibleProvider._strict_schema_compatible(
+        {
+            "type": "object",
+            "properties": {"answer": {"type": "string"}},
+            "required": [],
+            "additionalProperties": True,
+        }
+    )
