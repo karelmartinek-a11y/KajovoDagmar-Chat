@@ -142,7 +142,9 @@ export class VoiceClient {
     this.clearResponseRecoveryTimer();
     this.responseRecoveryTimer = window.setTimeout(() => {
       this.responseRecoveryTimer = null;
-      if (['processing', 'responding', 'paused'].includes(this.snapshot.state)) {
+      if (
+        !['listening', 'ended', 'error', 'reconnecting', 'connecting'].includes(this.snapshot.state)
+      ) {
         // Use the canonical terminal state directly here. The recovery exists
         // for a lost terminal websocket event, so the normal transition guard
         // may still believe the session is in an intermediate state.
