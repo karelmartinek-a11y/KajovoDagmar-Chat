@@ -310,6 +310,32 @@ describe('VoiceClient', () => {
     expect(latest(client).error).toContain('Textová odpověď');
   });
 
+  it('recovers only an unfinished response and never revives a terminal session', async () => {
+    vi.useFakeTimers();
+    try {
+      const recovered = new VoiceClient();
+      await deliver(recovered, 1, 'assistant.text', { text: 'Čekám na zvuk' });
+      await vi.advanceTimersByTimeAsync(20_000);
+      expect(latest(recovered)).toMatchObject({ state: 'listening', turnState: 'listening' });
+
+      const endedLocally = new VoiceClient();
+      await deliver(endedLocally, 1, 'assistant.text', { text: 'Končím' });
+      await endedLocally.end();
+      await vi.advanceTimersByTimeAsync(20_000);
+      expect(latest(endedLocally).state).toBe('ended');
+
+      for (const event of ['session.ended', 'resync.required', 'error']) {
+        const terminal = new VoiceClient();
+        await deliver(terminal, 1, 'assistant.text', { text: 'Terminální stav' });
+        await deliver(terminal, 2, event);
+        await vi.advanceTimersByTimeAsync(20_000);
+        expect(latest(terminal).state).toBe(event === 'session.ended' ? 'ended' : 'error');
+      }
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('handles audio and page lifecycle without claiming a live microphone', async () => {
     apiMock.mockResolvedValueOnce({ ticket: 'ticket', websocket_path: '/api/v1/realtime' });
     const client = new VoiceClient();

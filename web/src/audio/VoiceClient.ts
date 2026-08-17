@@ -142,15 +142,10 @@ export class VoiceClient {
     this.clearResponseRecoveryTimer();
     this.responseRecoveryTimer = window.setTimeout(() => {
       this.responseRecoveryTimer = null;
-      if (
-        !['listening', 'ended', 'error', 'reconnecting', 'connecting'].includes(this.snapshot.state)
-      ) {
-        // Use the canonical terminal state directly here. The recovery exists
-        // for a lost terminal websocket event, so the normal transition guard
-        // may still believe the session is in an intermediate state.
-        this.update({ state: 'listening', stateMessage: 'Naslouchám' });
-        this.update({ turnState: 'listening' });
-      }
+      // Use the canonical terminal state directly here. The recovery exists
+      // for a lost terminal websocket event; a genuine audio error cancels
+      // this timer before it can run.
+      this.update({ state: 'listening', stateMessage: 'Naslouchám', turnState: 'listening' });
     }, 20_000);
   }
 
@@ -599,6 +594,7 @@ export class VoiceClient {
   async end(): Promise<void> {
     const conversationId = this.snapshot.conversationId;
     this.ending = true;
+    this.clearResponseRecoveryTimer();
     if (this.reconnectTimer !== null) window.clearTimeout(this.reconnectTimer);
     this.reconnectTimer = null;
     if (this.socket?.readyState === WebSocket.OPEN) this.send('session.end', {});
@@ -832,6 +828,7 @@ export class VoiceClient {
         });
         break;
       case 'session.ended':
+        this.clearResponseRecoveryTimer();
         this.move('ended', 'Rozhovor byl ukončen');
         break;
       case 'resync.required':
@@ -895,6 +892,7 @@ export class VoiceClient {
   }
 
   private fail(message: string): void {
+    this.clearResponseRecoveryTimer();
     this.update({ error: message, microphoneActive: false, captureState: 'failed' });
     this.move('error', 'Vyžaduje pozornost');
   }
