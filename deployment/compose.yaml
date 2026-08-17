@@ -51,6 +51,7 @@ services:
     tmpfs: [/tmp]
     security_opt: ["no-new-privileges:true"]
     cap_drop: [ALL]
+    cap_add: [CHOWN, FOWNER, SETGID, SETUID]
     deploy:
       replicas: 1
       resources:
@@ -90,6 +91,7 @@ services:
     tmpfs: [/tmp]
     security_opt: ["no-new-privileges:true"]
     cap_drop: [ALL]
+    cap_add: [CHOWN, FOWNER, SETGID, SETUID]
     deploy:
       replicas: 1
       resources:

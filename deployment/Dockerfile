@@ -19,14 +19,16 @@ ENV PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1 \
     PATH=/opt/kajovodagmar/.venv/bin:/opt/kajovodagmar/bin:$PATH
 RUN addgroup -S -g 10001 kajovodagmar \
     && adduser -S -D -H -u 10001 -G kajovodagmar -s /sbin/nologin kajovodagmar \
-    && apk add --no-cache ca-certificates
+    && apk add --no-cache ca-certificates su-exec
 WORKDIR /opt/kajovodagmar
 COPY --from=python-build /opt/kajovodagmar/.venv .venv
 COPY migrations/ migrations/
 COPY alembic.ini ./
 COPY --from=web-build /build/web/dist web/dist/
+COPY deployment/container-entrypoint.sh /usr/local/bin/kajovodagmar-entrypoint
+RUN chmod 0755 /usr/local/bin/kajovodagmar-entrypoint
 RUN mkdir -p runtime/logs runtime/exports && chown -R kajovodagmar:kajovodagmar /opt/kajovodagmar
-USER 10001:10001
+ENTRYPOINT ["/usr/local/bin/kajovodagmar-entrypoint"]
 EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 CMD ["python","-c","import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/v1/health/live', timeout=3)"]
 CMD ["uvicorn","kajovodagmar.main:app","--host","0.0.0.0","--port","8000","--proxy-headers","--forwarded-allow-ips=*"]
