@@ -64,6 +64,19 @@ export async function ensureAuthenticated(page: Page): Promise<void> {
     await page.reload({ waitUntil: 'domcontentloaded' });
     await page.getByRole('heading', { name: 'Chat' }).waitFor();
   }
+  const serviceAccessNotice = page.getByRole('dialog', { name: 'Použití servisního přístupu' });
+  if (await serviceAccessNotice.isVisible().catch(() => false)) {
+    const acknowledgement = page.waitForResponse(
+      (response) =>
+        response.request().method() === 'POST' &&
+        response.url().includes('/api/v1/auth/service-access-notices/') &&
+        response.url().endsWith('/ack'),
+    );
+    await serviceAccessNotice.getByRole('button', { name: 'Rozumím' }).click();
+    if ((await acknowledgement).status() !== 204)
+      throw new Error('E2E service-access notice acknowledgement did not return HTTP 204.');
+    await serviceAccessNotice.waitFor({ state: 'hidden' });
+  }
 }
 
 export async function navigateTo(page: Page, section: string): Promise<void> {
