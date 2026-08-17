@@ -4,6 +4,9 @@ import { getVoiceClient } from '../../audio/voiceSession';
 import { Orb } from './Orb';
 import { Feedback } from '../../components/Feedback';
 import './chat.css';
+import { api } from '../../api/client';
+
+const LANGUAGE_LABELS: Record<string, string> = { cs: 'čeština', en: 'angličtina', de: 'němčina' };
 
 function displayValue(value: unknown): string | null {
   return typeof value === 'string' || typeof value === 'number' ? String(value) : null;
@@ -16,11 +19,20 @@ export function ChatPage() {
   const [textBusy, setTextBusy] = useState(false);
   const [textError, setTextError] = useState<string | null>(null);
   const [interruptionRequested, setInterruptionRequested] = useState(false);
+  const [conversationLanguage, setConversationLanguage] = useState('cs');
   useEffect(() => client.subscribe(setSnapshot), [client]);
+  useEffect(() => {
+    void api<{ conversation?: { language?: { value?: unknown } } }>('/settings')
+      .then((settings) => {
+        const language = settings.conversation?.language?.value;
+        if (typeof language === 'string' && language in LANGUAGE_LABELS) setConversationLanguage(language);
+      })
+      .catch(() => undefined);
+  }, []);
 
   async function mainAction() {
     if (snapshot.state === 'ready' || snapshot.state === 'ended' || snapshot.state === 'error')
-      await client.start();
+      await client.start(conversationLanguage);
     else if (snapshot.state === 'listening') client.finishTurn();
     else if (snapshot.state === 'responding') client.interrupt();
   }
@@ -37,7 +49,7 @@ export function ChatPage() {
     setTextBusy(true);
     setTextError(null);
     try {
-      if (!snapshot.conversationId) await client.startAndSendText(draft);
+      if (!snapshot.conversationId) await client.startAndSendText(draft, conversationLanguage);
       else await client.sendText(draft);
       setText('');
     } catch (error) {
@@ -73,7 +85,7 @@ export function ChatPage() {
             {(snapshot.state === 'ready' ||
               snapshot.state === 'ended' ||
               snapshot.state === 'error') && (
-              <button className="primary" onClick={() => void client.start()}>
+                <button className="primary" onClick={() => void client.start(conversationLanguage)}>
                 Zahájit rozhovor
               </button>
             )}
@@ -112,7 +124,7 @@ export function ChatPage() {
             )}
           </div>
           <div className="quick-settings" aria-label="Aktivní nastavení">
-            <span>Jazyk: čeština</span>
+            <span>Jazyk: {LANGUAGE_LABELS[conversationLanguage] ?? conversationLanguage}</span>
             <span>Hlas: dle Nastavení</span>
             <span>Stručnost: dle Nastavení</span>
           </div>

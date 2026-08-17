@@ -22,6 +22,7 @@ from kajovodagmar.api import (
     providers,
     realtime_ticket,
     settings,
+    voice_preview,
 )
 from kajovodagmar.api.middleware import CorrelationAndSecurityMiddleware
 from kajovodagmar.audit.service import AuditService
@@ -44,6 +45,7 @@ from kajovodagmar.providers.service import ProviderService
 from kajovodagmar.realtime.websocket import handle_realtime
 from kajovodagmar.search.service import HybridSearchService
 from kajovodagmar.security.crypto import SecretCipher
+from kajovodagmar.security.voice_service import sync_key_metadata
 from kajovodagmar.settings.catalog import BY_KEY
 from kajovodagmar.settings.service import SettingsService
 
@@ -98,6 +100,8 @@ async def lifespan(app: FastAPI):
         return definition.default if definition else fallback
 
     app.state.setting_value = setting_value
+    async with database.session() as session:
+        await sync_key_metadata(session, infra.voice_service_api_key_file)
     yield
     await database.dispose()
 
@@ -155,6 +159,7 @@ def create_app() -> FastAPI:
         settings.router,
         providers.router,
         notifications.router,
+        voice_preview.router,
         profile.router,
         realtime_ticket.router,
         exports.router,

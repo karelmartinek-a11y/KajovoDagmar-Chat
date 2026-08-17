@@ -10,6 +10,7 @@ readonly SHARED=$ROOT/shared
 readonly ENV_FILE=$SHARED/env/production.env
 readonly GITHUB_KEY=$SHARED/secrets/github-readonly
 readonly GITHUB_KNOWN_HOSTS=$SHARED/secrets/github-known-hosts
+readonly VOICE_SERVICE_KEY_FILE=$SHARED/secrets/voice-service-api-key
 readonly TOOLS=$SHARED/tools
 readonly ACTIVE_SHA_FILE=$SHARED/data/active-release-sha
 readonly PROJECT=kajovodagmar-chat
@@ -18,10 +19,30 @@ readonly LOOPBACK_PORT=18180
 readonly POSTGRES_IMAGE=kajovodagmar-chat-postgres:17-pgbackrest-2.59.0
 readonly GIT_URL=git@github.com:karelmartinek-a11y/KajovoDagmar-Chat.git
 
+ensure_voice_service_key() {
+  install -d -o root -g root -m 0700 "$SHARED/secrets"
+  if [[ ! -e $VOICE_SERVICE_KEY_FILE ]]; then
+    local temporary
+    temporary=$(mktemp "$SHARED/secrets/.voice-service-api-key.XXXXXX")
+    trap 'rm -f -- "$temporary"' RETURN
+    openssl rand -base64 48 | tr -d '\n' >"$temporary"
+    chown root:root "$temporary"
+    chmod 600 "$temporary"
+    mv -f -- "$temporary" "$VOICE_SERVICE_KEY_FILE"
+    trap - RETURN
+  fi
+  test -f "$VOICE_SERVICE_KEY_FILE"
+  test "$(stat -c '%a' "$VOICE_SERVICE_KEY_FILE")" = 600
+  test "$(stat -c '%U:%G' "$VOICE_SERVICE_KEY_FILE")" = root:root
+  test "$(stat -c '%s' "$VOICE_SERVICE_KEY_FILE")" -ge 32
+}
+
 if [[ ! $RELEASE_SHA =~ ^[0-9a-f]{40}$ ]]; then
   echo "Deployment requires one exact 40-character lowercase commit SHA." >&2
   exit 64
 fi
+
+ensure_voice_service_key
 
 deployment_password_b64=$(</dev/stdin)
 if [[ -z $deployment_password_b64 || ! $deployment_password_b64 =~ ^[A-Za-z0-9+/]*={0,2}$ ]]; then
@@ -55,6 +76,7 @@ export BACKUP_REPOSITORY_DIR=$SHARED/backups/pgbackrest
 export APP_LOOPBACK_PORT=$LOOPBACK_PORT
 export POSTGRES_IMAGE
 export RELEASE_SHA
+export VOICE_SERVICE_KEY_FILE
 
 previous_sha=
 if [[ -f $ACTIVE_SHA_FILE ]]; then
@@ -232,6 +254,16 @@ install -o root -g root -m 0750 \
   /usr/local/sbin/deploy-kajovodagmar-chat.next
 mv -f /usr/local/sbin/deploy-kajovodagmar-chat.next \
   /usr/local/sbin/deploy-kajovodagmar-chat
+install -o root -g root -m 0750 \
+  "$release/scripts/production_voice_forensics.sh" \
+  /usr/local/sbin/kajovodagmar-voice-forensics.next
+mv -f /usr/local/sbin/kajovodagmar-voice-forensics.next \
+  /usr/local/sbin/kajovodagmar-voice-forensics
+install -o root -g root -m 0750 \
+  "$release/scripts/production_voice_service_key.sh" \
+  /usr/local/sbin/kajovodagmar-voice-service-key.next
+mv -f /usr/local/sbin/kajovodagmar-voice-service-key.next \
+  /usr/local/sbin/kajovodagmar-voice-service-key
 printf '{"event":"deployment.succeeded","sha":"%s","previous_sha":"%s","timestamp":"%s"}\n' \
   "$RELEASE_SHA" "$previous_sha" "$(date --iso-8601=seconds)" \
   >>"$SHARED/logs/deployment-audit.jsonl"

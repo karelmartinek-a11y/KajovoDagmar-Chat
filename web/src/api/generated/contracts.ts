@@ -30,5 +30,6 @@ export type TranscriptCorrection = { "expected_message_version": number; "correc
 export type UserTurn = { "idempotency_key": string; "content": string; "input_mode": "voice" | "text"; "language"?: string };
 export type ValidationError = { "loc": Array<string | number>; "msg": string; "type": string; "input"?: unknown; "ctx"?: Record<string, unknown> };
 export type VersionRequest = { "expected_version": number };
+export type VoicePreviewRequest = { "language"?: string; "voice"?: string };
 
 export type ApiErrorEnvelope = { error: { code: string; message: string; details?: unknown; retryable?: boolean }; correlation_id?: string | null };

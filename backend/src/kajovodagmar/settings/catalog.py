@@ -16,30 +16,12 @@ class SettingDefinition:
         "immediate", "next_turn", "new_voice_session", "next_login", "service_restart"
     ]
     choices: tuple[str, ...] = ()
+    choice_labels: tuple[str, ...] = ()
     minimum: int | None = None
     maximum: int | None = None
 
 
 DEFINITIONS: tuple[SettingDefinition, ...] = (
-    SettingDefinition(
-        "general",
-        "ui_language",
-        "Jazyk rozhraní",
-        "Jazyk ovládacích prvků aplikace.",
-        "choice",
-        "cs",
-        "next_login",
-        ("cs", "en"),
-    ),
-    SettingDefinition(
-        "general",
-        "timezone",
-        "Časové pásmo",
-        "Časové pásmo pro zobrazení dat a časů.",
-        "string",
-        "Europe/Prague",
-        "immediate",
-    ),
     SettingDefinition(
         "conversation",
         "language",
@@ -49,6 +31,7 @@ DEFINITIONS: tuple[SettingDefinition, ...] = (
         "cs",
         "next_turn",
         ("cs", "en", "de"),
+        ("Čeština", "Angličtina", "Němčina"),
     ),
     SettingDefinition(
         "conversation",
@@ -59,6 +42,7 @@ DEFINITIONS: tuple[SettingDefinition, ...] = (
         "balanced",
         "next_turn",
         ("short", "balanced", "detailed"),
+        ("Stručná", "Vyvážená", "Podrobná"),
     ),
     SettingDefinition(
         "conversation",
@@ -239,6 +223,7 @@ DEFINITIONS: tuple[SettingDefinition, ...] = (
         "standard",
         "immediate",
         ("minimal", "standard", "enhanced"),
+        ("Minimální", "Standardní", "Rozšířená"),
     ),
     SettingDefinition(
         "backups",

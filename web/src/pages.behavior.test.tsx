@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   api: vi.fn(),
+  apiEventStream: vi.fn(),
   refresh: vi.fn(),
   login: vi.fn(),
   logout: vi.fn(),
@@ -10,7 +11,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('./api/client', async (loadOriginal) => {
   const original = await loadOriginal<typeof import('./api/client')>();
-  return { ...original, api: mocks.api };
+  return { ...original, api: mocks.api, apiEventStream: mocks.apiEventStream };
 });
 vi.mock('./features/auth/AuthContext', () => ({
   useAuth: () => ({
@@ -346,6 +347,12 @@ function successfulApi(path: string, init?: RequestInit): Promise<unknown> {
 beforeEach(() => {
   vi.restoreAllMocks();
   mocks.api.mockImplementation(successfulApi);
+  mocks.apiEventStream.mockImplementation(
+    async (_path: string, _init: RequestInit, onEvent: (event: Record<string, unknown>) => void) => {
+      onEvent({ stage: 'Připojení k SMTP serveru' });
+      onEvent({ stage: 'Výsledek', delivered: true });
+    },
+  );
   mocks.refresh.mockResolvedValue(undefined);
   mocks.login.mockResolvedValue(undefined);
   mocks.logout.mockResolvedValue(undefined);
@@ -664,8 +671,8 @@ describe('settings behavior', () => {
   it('loads every field type, saves changes and covers provider, email and exports', async () => {
     vi.spyOn(window, 'prompt').mockReturnValue('recipient@example.test');
     render(<SettingsPage />);
-    const localeLabel = (await screen.findByText('Pole cs')).closest('label')!;
-    fireEvent.change(within(localeLabel).getByRole('combobox'), { target: { value: 'en' } });
+    const conversationLabel = (await screen.findByText('Pole balanced')).closest('label')!;
+    fireEvent.change(within(conversationLabel).getByRole('combobox'), { target: { value: 'detailed' } });
     fireEvent.click(screen.getByRole('button', { name: 'Uložit změny' }));
     expect(await screen.findByRole('status')).toHaveTextContent('trvale uloženo');
 
@@ -678,7 +685,6 @@ describe('settings behavior', () => {
       'Řeč – převod textu na hlas',
       'Paměť – hledání souvisejících informací',
       'Archivář – názvy a shrnutí rozhovorů',
-      'Barva hlasu Dagmar',
     ]) {
       expect(await screen.findByRole('heading', { name: title })).toBeInTheDocument();
     }
@@ -691,7 +697,7 @@ describe('settings behavior', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Uložit výběr modelů' }));
     fireEvent.click(screen.getByRole('button', { name: 'Znovu ověřit klíč a nabídku modelů' }));
     const providerForm = screen
-      .getByRole('heading', { name: 'Přidat poskytovatele' })
+      .getByRole('heading', { name: 'Nahradit API klíč' })
       .closest('form')!;
     fireEvent.change(providerForm.querySelector('input[type="password"]')!, {
       target: { value: 'synthetic-key' },
@@ -704,17 +710,21 @@ describe('settings behavior', () => {
       ),
     );
 
-    fireEvent.click(screen.getByRole('button', { name: 'E-mail a oznámení' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Modely a poskytovatelé' }));
     fireEvent.change(screen.getByLabelText('SMTP server'), {
       target: { value: 'smtp2.example.test' },
     });
     fireEvent.change(screen.getByLabelText('Testovací příjemce'), {
       target: { value: 'deliver-to@example.test' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Uložit konfiguraci' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Provést skutečný test doručení' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Uložit SMTP' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Otestovat odeslání' }));
     await waitFor(() =>
-      expect(mocks.api).toHaveBeenCalledWith('/notifications/email/test', expect.anything()),
+      expect(mocks.apiEventStream).toHaveBeenCalledWith(
+        '/notifications/email/test/stream',
+        expect.anything(),
+        expect.anything(),
+      ),
     );
 
     fireEvent.click(screen.getByRole('button', { name: 'Soukromí a data' }));
@@ -745,15 +755,12 @@ describe('settings behavior', () => {
     });
     vi.spyOn(window, 'prompt').mockReturnValue(null);
     const view = render(<SettingsPage />);
-    await screen.findByRole('heading', { name: 'Obecné' });
-    fireEvent.click(screen.getByRole('button', { name: 'Uložit změny' }));
-    expect(await screen.findByRole('status')).toHaveTextContent('nejsou neuložené změny');
+    await screen.findByRole('heading', { name: 'Konverzace' });
+    expect(screen.getByText('Tato oblast zatím nemá žádné spravovatelné hodnoty.')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Hlas a zvuk' }));
-    expect(
-      screen.getByText('Tato oblast zatím nemá žádné spravovatelné hodnoty.'),
-    ).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'E-mail a oznámení' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Provést skutečný test doručení' }));
+    expect(screen.getByRole('button', { name: 'Poslechnout vybraný hlas' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Modely a poskytovatelé' }));
+    expect(screen.getByRole('button', { name: 'Otestovat odeslání' })).toBeDisabled();
     view.unmount();
     mocks.api.mockRejectedValue(new Error('offline'));
     render(<SettingsPage />);
@@ -784,7 +791,7 @@ describe('settings behavior', () => {
 
   it('operates audit filters, manual backup, verification and isolated restore', async () => {
     render(<SettingsPage />);
-    await screen.findByRole('heading', { name: 'Obecné' });
+    await screen.findByRole('heading', { name: 'Konverzace' });
     fireEvent.click(screen.getByRole('button', { name: 'Provoz a audit' }));
     expect(await screen.findByText('AI není připravena.')).toBeInTheDocument();
     expect(screen.getByText('20260729-100000F')).toBeInTheDocument();

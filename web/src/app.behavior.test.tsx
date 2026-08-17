@@ -124,7 +124,7 @@ describe('chat screen behavior', () => {
     expect(mocks.start).toHaveBeenCalled();
     fireEvent.change(screen.getByLabelText('Textová zpráva'), { target: { value: 'Ahoj Dagmar' } });
     fireEvent.click(screen.getByRole('button', { name: 'Odeslat zprávu' }));
-    expect(mocks.startAndSendText).toHaveBeenCalledWith('Ahoj Dagmar');
+    expect(mocks.startAndSendText).toHaveBeenCalledWith('Ahoj Dagmar', 'cs');
   });
 
   it('renders transcript, partial text and all state-specific controls', async () => {

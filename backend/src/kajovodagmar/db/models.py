@@ -143,6 +143,38 @@ class SecurityToken(Base, UUIDPrimaryKeyMixin):
     attempt_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
 
+class VoiceServiceApiKey(Base, UUIDPrimaryKeyMixin, TimestampVersionMixin):
+    __tablename__ = "voice_service_api_key"
+    key_prefix: Mapped[str] = mapped_column(String(24), unique=True, nullable=False)
+    secret_digest: Mapped[str] = mapped_column(String(128), unique=True, nullable=False)
+    scope: Mapped[str] = mapped_column(String(80), nullable=False, default="voice.realtime.test")
+    created_by_account_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("administrator_account.id", ondelete="SET NULL")
+    )
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    revoke_reason: Mapped[str | None] = mapped_column(String(160))
+
+
+class ServiceAccessNotice(Base, UUIDPrimaryKeyMixin):
+    __tablename__ = "service_access_notice"
+    account_id: Mapped[UUID] = mapped_column(
+        ForeignKey("administrator_account.id", ondelete="CASCADE"), nullable=False
+    )
+    api_key_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("voice_service_api_key.id", ondelete="SET NULL")
+    )
+    occurred_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    result: Mapped[str] = mapped_column(String(32), nullable=False)
+    endpoint: Mapped[str] = mapped_column(String(160), nullable=False)
+    network_context: Mapped[str | None] = mapped_column(String(128))
+    correlation_id: Mapped[str | None] = mapped_column(String(64))
+    acknowledged_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    __table_args__ = (Index("ix_service_notice_account_ack", "account_id", "acknowledged_at"),)
+
+
 class ProviderConfiguration(Base, UUIDPrimaryKeyMixin, TimestampVersionMixin):
     __tablename__ = "provider_configuration"
     provider_type: Mapped[str] = mapped_column(String(64), nullable=False)

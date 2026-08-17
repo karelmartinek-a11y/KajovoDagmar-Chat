@@ -174,6 +174,51 @@ class ProviderService:
         )
         return catalog
 
+    async def reveal_key(
+        self, session: AsyncSession, provider_id: UUID, context: AuditContext
+    ) -> str:
+        row = await session.get(ProviderConfiguration, provider_id)
+        if row is None or row.provider_type not in {"openai", "openai_compatible"}:
+            raise NotFoundError("Poskytovatel nebyl nalezen.")
+        if not row.secret_id:
+            raise CapabilityUnavailableError("provider", "API klíč není uložen.")
+        secret = await session.get(EncryptedSecret, row.secret_id)
+        if secret is None or secret.revoked_at:
+            raise CapabilityUnavailableError("provider", "API klíč není dostupný.")
+        key = self.cipher.decrypt(EncryptedValue.from_json(secret.ciphertext))
+        await self.audit.append(
+            session,
+            context=context,
+            event_type="provider.secret_revealed",
+            result="success",
+            target_id=row.id,
+            details={"provider_type": row.provider_type},
+        )
+        return key
+
+    async def revoke_key(
+        self, session: AsyncSession, provider_id: UUID, context: AuditContext
+    ) -> None:
+        row = await session.get(ProviderConfiguration, provider_id, with_for_update=True)
+        if row is None:
+            raise NotFoundError("Poskytovatel nebyl nalezen.")
+        if row.secret_id:
+            secret = await session.get(EncryptedSecret, row.secret_id, with_for_update=True)
+            if secret is not None:
+                secret.revoked_at = utc_now()
+        row.secret_id = None
+        row.enabled = False
+        row.verification_state = "not_verified"
+        row.version += 1
+        await self.audit.append(
+            session,
+            context=context,
+            event_type="provider.secret_revoked",
+            result="success",
+            target_id=row.id,
+            details={"provider_type": row.provider_type},
+        )
+
     async def runtime(
         self, session: AsyncSession, row: ProviderConfiguration
     ) -> OpenAICompatibleProvider | DeterministicProvider:

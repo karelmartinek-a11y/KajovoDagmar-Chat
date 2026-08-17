@@ -29,7 +29,8 @@ dependencies = [
   "structlog==25.5.0",
   "typer==0.21.0",
   "orjson==3.11.7",
-  "jsonschema==4.26.0"
+  "jsonschema==4.26.0",
+  "websockets==17.0"
 ]
 
 [project.optional-dependencies]

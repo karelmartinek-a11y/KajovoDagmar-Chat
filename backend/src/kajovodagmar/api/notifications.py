@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import json
+
 from fastapi import APIRouter, Depends, Request
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, EmailStr, Field, SecretStr
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -87,3 +90,37 @@ async def test(
         session, str(payload.recipient), identity.audit_context
     )
     return {"delivered": True}
+
+
+@router.post("/email/test/stream")
+async def test_stream(
+    payload: SMTPTest,
+    request: Request,
+    identity: RequestIdentity = Depends(csrf_guard),
+):
+    async def events():
+        def event(stage: str, **extra: object) -> str:
+            return f"data: {json.dumps({'stage': stage, **extra}, ensure_ascii=False)}\n\n"
+
+        yield event("Připojení k SMTP serveru")
+        try:
+            async with request.app.state.database.session() as session:
+                await request.app.state.notifications.test_smtp(
+                    session, str(payload.recipient), identity.audit_context
+                )
+            yield event("Ověření a odeslání zprávy", status="hotovo")
+            yield event("Výsledek", delivered=True)
+        except Exception as exc:
+            yield event("Výsledek", delivered=False, error=exc.__class__.__name__)
+
+    return StreamingResponse(events(), media_type="text/event-stream")
+
+
+@router.delete("/email")
+async def delete(
+    request: Request,
+    session: AsyncSession = Depends(db_session),
+    identity: RequestIdentity = Depends(csrf_guard),
+):
+    await request.app.state.notifications.delete_smtp(session, identity.audit_context)
+    return {"deleted": True}

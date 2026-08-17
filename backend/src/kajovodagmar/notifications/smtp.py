@@ -16,6 +16,10 @@ class SMTPConfiguration:
     sender: str
     use_starttls: bool = True
 
+    @property
+    def use_implicit_tls(self) -> bool:
+        return self.port == 465 and not self.use_starttls
+
 
 class SMTPMailer:
     def __init__(self, config: SMTPConfiguration) -> None:
@@ -31,7 +35,11 @@ class SMTPMailer:
         message["Subject"] = subject
         message.set_content(text)
         context = ssl.create_default_context()
-        with smtplib.SMTP(self.config.host, self.config.port, timeout=20) as smtp:
+        if self.config.use_implicit_tls:
+            smtp = smtplib.SMTP_SSL(self.config.host, self.config.port, timeout=20, context=context)
+        else:
+            smtp = smtplib.SMTP(self.config.host, self.config.port, timeout=20)
+        with smtp:
             if self.config.use_starttls:
                 smtp.starttls(context=context)
             if self.config.username and self.config.password:

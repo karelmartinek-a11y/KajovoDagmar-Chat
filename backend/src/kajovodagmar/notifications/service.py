@@ -19,6 +19,7 @@ from kajovodagmar.errors import CapabilityUnavailableError, DomainError
 from kajovodagmar.identity.service import IdentityService
 from kajovodagmar.notifications.smtp import SMTPConfiguration, SMTPMailer
 from kajovodagmar.security.crypto import EncryptedValue, SecretCipher
+from kajovodagmar.types import utc_now
 
 
 class NotificationService:
@@ -104,8 +105,6 @@ class NotificationService:
         )
         row.enabled = True
         row.verification_state = "verified"
-        from kajovodagmar.types import utc_now
-
         row.verified_at = utc_now()
         await self.audit.append(
             session,
@@ -113,6 +112,30 @@ class NotificationService:
             event_type="notifications.smtp_verified",
             result="success",
             target_id=row.id,
+        )
+
+    async def delete_smtp(self, session: AsyncSession, context: AuditContext) -> None:
+        row = await session.scalar(
+            select(ProviderConfiguration)
+            .where(ProviderConfiguration.provider_type == "smtp")
+            .with_for_update()
+        )
+        if row is None:
+            return
+        secret_id = row.secret_id
+        await session.delete(row)
+        if secret_id:
+            secret = await session.get(EncryptedSecret, secret_id)
+            if secret is not None:
+                secret.revoked_at = utc_now()
+        await self.audit.append(
+            session,
+            context=context,
+            event_type="notifications.smtp_deleted",
+            result="success",
+            target_type="provider_configuration",
+            target_id=row.id,
+            details={"secret_removed": bool(secret_id)},
         )
 
     async def process_password_reset(self, session: AsyncSession, payload: dict[str, str]) -> None:
@@ -170,13 +193,16 @@ class NotificationService:
             secret = await session.get(EncryptedSecret, row.secret_id)
             if secret and not secret.revoked_at:
                 password = self.cipher.decrypt(EncryptedValue.from_json(secret.ciphertext))
+        use_starttls = bool(row.capabilities.get("use_starttls", True))
+        if parsed.port == 465:
+            use_starttls = False
         cfg = SMTPConfiguration(
             host=parsed.hostname or "",
             port=parsed.port or 587,
             username=row.capabilities.get("username"),
             password=password,
             sender=row.capabilities.get("sender", ""),
-            use_starttls=bool(row.capabilities.get("use_starttls", True)),
+            use_starttls=use_starttls,
         )
         if not cfg.host or not cfg.sender:
             raise CapabilityUnavailableError("email", "Konfigurace odchozí pošty není úplná.")

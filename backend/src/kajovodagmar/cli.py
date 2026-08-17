@@ -161,6 +161,14 @@ def diagnostics_voice_live_probe() -> None:  # pragma: no cover - subprocess ent
     raise typer.Exit(main())
 
 
+@app.command("voice-forensics")
+def voice_forensics() -> None:  # pragma: no cover - subprocess entrypoint
+    """Run the real realtime voice path with synthetic PCM, without a microphone."""
+    from kajovodagmar.diagnostics.voice_forensics import main
+
+    raise typer.Exit(main())
+
+
 @app.command("acceptance-seed-provider")
 def acceptance_seed_provider() -> None:  # pragma: no cover - subprocess entrypoint
     """Seed only the deterministic provider in a test database."""
