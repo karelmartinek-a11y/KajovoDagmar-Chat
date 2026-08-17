@@ -40,6 +40,7 @@ class SettingsService:
                 "effect_boundary": definition.effect_boundary,
                 "type": definition.value_type,
                 "choices": definition.choices,
+                "choice_labels": definition.choice_labels,
                 "minimum": definition.minimum,
                 "maximum": definition.maximum,
             }

@@ -60,3 +60,41 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   }
   return body as T;
 }
+
+export async function apiBlob(path: string, init: RequestInit = {}): Promise<Blob> {
+  const headers = new Headers(init.headers);
+  if (csrfToken && !['GET', 'HEAD', 'OPTIONS'].includes((init.method ?? 'GET').toUpperCase())) {
+    headers.set('X-CSRF-Token', csrfToken);
+  }
+  const response = await fetch(`/api/v1${path}`, { ...init, headers, credentials: 'same-origin' });
+  if (!response.ok) {
+    throw new ApiError('request_failed', 'Požadavek se nepodařilo dokončit.', response.status);
+  }
+  return response.blob();
+}
+
+export async function apiEventStream(
+  path: string,
+  init: RequestInit,
+  onEvent: (event: Record<string, unknown>) => void,
+): Promise<void> {
+  const headers = new Headers(init.headers);
+  if (csrfToken) headers.set('X-CSRF-Token', csrfToken);
+  const response = await fetch(`/api/v1${path}`, { ...init, headers, credentials: 'same-origin' });
+  if (!response.ok || !response.body)
+    throw new ApiError('request_failed', 'Stream testu se nepodařilo spustit.', response.status);
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  while (true) {
+    const { value, done } = await reader.read();
+    buffer += decoder.decode(value ?? new Uint8Array(), { stream: !done });
+    const blocks = buffer.split('\n\n');
+    buffer = blocks.pop() ?? '';
+    for (const block of blocks) {
+      const line = block.split('\n').find((item) => item.startsWith('data: '));
+      if (line) onEvent(JSON.parse(line.slice(6)) as Record<string, unknown>);
+    }
+    if (done) break;
+  }
+}

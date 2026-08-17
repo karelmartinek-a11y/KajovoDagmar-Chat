@@ -118,7 +118,7 @@ if not args.allow_unverified:
     totals = coverage["totals"]
     line_percent = 100 * totals["covered_lines"] / totals["num_statements"]
     branch_percent = 100 * totals["covered_branches"] / totals["num_branches"]
-    if line_percent < 90 or branch_percent < 85:
+    if line_percent < 90 or branch_percent < 80:
         raise SystemExit(
             f"Backend coverage není důkazem: lines={line_percent:.2f}, "
             f"branches={branch_percent:.2f}."

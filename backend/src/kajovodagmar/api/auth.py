@@ -12,7 +12,12 @@ from kajovodagmar.api.dependencies import (
     network_context,
 )
 from kajovodagmar.audit.service import AuditContext
-from kajovodagmar.db.models import AdministratorAccount, AdministratorProfile, AuthSession
+from kajovodagmar.db.models import (
+    AdministratorAccount,
+    AdministratorProfile,
+    AuthSession,
+    ServiceAccessNotice,
+)
 from kajovodagmar.errors import DomainError
 from kajovodagmar.identity.schemas import (
     ChangePasswordRequest,
@@ -21,6 +26,7 @@ from kajovodagmar.identity.schemas import (
     PasswordResetComplete,
     PasswordResetRequest,
 )
+from kajovodagmar.security.voice_service import acknowledge_notice
 from kajovodagmar.types import utc_now
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -111,6 +117,14 @@ async def me(
     profile = await session.scalar(
         select(AdministratorProfile).where(AdministratorProfile.account_id == identity.account.id)
     )
+    notice = await session.scalar(
+        select(ServiceAccessNotice)
+        .where(
+            ServiceAccessNotice.account_id == identity.account.id,
+            ServiceAccessNotice.acknowledged_at.is_(None),
+        )
+        .order_by(ServiceAccessNotice.occurred_at.desc())
+    )
     return {
         "id": str(identity.account.id),
         "username": identity.account.username,
@@ -120,7 +134,36 @@ async def me(
             "email": profile.email if profile else None,
             "email_state": profile.email_state if profile else "not_set",
         },
+        "service_access_notice": (
+            {
+                "id": str(notice.id),
+                "occurred_at": notice.occurred_at.isoformat(),
+                "result": notice.result,
+                "endpoint": notice.endpoint,
+                "network_context": notice.network_context,
+                "correlation_id": notice.correlation_id,
+            }
+            if notice
+            else None
+        ),
     }
+
+
+@router.post("/service-access-notices/{notice_id}/ack", status_code=204)
+async def acknowledge_service_access_notice(
+    notice_id: str,
+    session: AsyncSession = Depends(db_session),
+    identity: RequestIdentity = Depends(csrf_guard),
+):
+    from uuid import UUID
+
+    try:
+        parsed = UUID(notice_id)
+    except ValueError as exc:
+        raise DomainError(
+            "invalid_notice_id", "Identifikátor upozornění není platný.", 422
+        ) from exc
+    await acknowledge_notice(session, identity.account.id, parsed)
 
 
 @router.get("/sessions")

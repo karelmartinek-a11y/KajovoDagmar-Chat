@@ -65,6 +65,36 @@
 .mobile-header {
   display: none;
 }
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  background: rgb(2 6 23 / 0.78);
+}
+.modal-card {
+  width: min(100%, 34rem);
+  padding: 1.5rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow);
+}
+.notice-details {
+  display: grid;
+  grid-template-columns: 9rem 1fr;
+  gap: 0.45rem 1rem;
+  margin: 1.25rem 0;
+}
+.notice-details dt {
+  color: var(--muted);
+}
+.notice-details dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
 .auth-page,
 .centered {
   min-height: 100vh;

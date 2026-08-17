@@ -13,6 +13,8 @@ services:
     labels:
       cz.hcasc.application: kajovodagmar-chat
       cz.hcasc.commit: ${RELEASE_SHA:?Release SHA is required}
+    secrets:
+      - voice-service-api-key
 
   worker:
     image: ${APP_IMAGE:?Exact application image is required}
@@ -22,6 +24,8 @@ services:
     labels:
       cz.hcasc.application: kajovodagmar-chat
       cz.hcasc.commit: ${RELEASE_SHA:?Release SHA is required}
+    secrets:
+      - voice-service-api-key
 
   db:
     image: ${POSTGRES_IMAGE:?Exact PostgreSQL image is required}
@@ -51,3 +55,7 @@ volumes:
       type: none
       o: bind
       device: ${SHARED_DATA_DIR:?Shared data directory is required}/restore-test
+
+secrets:
+  voice-service-api-key:
+    file: ${VOICE_SERVICE_KEY_FILE:?Voice service key file is required}

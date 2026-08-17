@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from kajovodagmar.audit.service import AuditContext
 from kajovodagmar.db.models import AdministratorAccount, AuthSession
 from kajovodagmar.errors import UnauthorizedError
+from kajovodagmar.security.voice_service import VoiceServiceIdentity, authenticate
 
 
 @dataclass(slots=True)
@@ -64,4 +65,26 @@ async def csrf_guard(
         from kajovodagmar.errors import DomainError
 
         raise DomainError("csrf_failed", "Bezpečnostní ověření požadavku selhalo.", 403)
+    return identity
+
+
+async def realtime_identity(
+    request: Request,
+    session: AsyncSession = Depends(db_session),
+    kajovodagmar_session: str | None = Cookie(default=None, alias="__Host-kajovodagmar_session"),
+    authorization: str | None = Header(default=None),
+    x_csrf_token: str | None = Header(default=None),
+) -> RequestIdentity | VoiceServiceIdentity:
+    bearer = authorization.removeprefix("Bearer ").strip() if authorization else ""
+    if bearer:
+        return await authenticate(
+            session,
+            bearer,
+            key_file=request.app.state.settings.voice_service_api_key_file,
+            network_context=network_context(request),
+            correlation_id=getattr(request.state, "correlation_id", None),
+            audit=request.app.state.audit,
+        )
+    identity = await current_identity(request, session, kajovodagmar_session)
+    await csrf_guard(identity, x_csrf_token)
     return identity

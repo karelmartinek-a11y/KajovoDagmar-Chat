@@ -3,6 +3,7 @@ from __future__ import annotations
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Request
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, SecretStr
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -29,7 +30,9 @@ async def list_providers(
 ):
     rows = (
         await session.scalars(
-            select(ProviderConfiguration).order_by(ProviderConfiguration.display_name)
+            select(ProviderConfiguration)
+            .where(ProviderConfiguration.provider_type.in_(("openai", "openai_compatible")))
+            .order_by(ProviderConfiguration.display_name)
         )
     ).all()
     items = []
@@ -92,12 +95,15 @@ async def save(
         context=identity.audit_context,
     )
     catalog = await request.app.state.providers.verify(session, row.id, identity.audit_context)
+    recommendations = await request.app.state.model_recommendations.apply_recommended(
+        session, row.id, identity.account.id, identity.audit_context
+    )
     return {
         "id": str(row.id),
         "version": row.version,
         "verification_state": row.verification_state,
         "catalog_count": len(catalog),
-        "recommendations": None,
+        "recommendations": recommendations,
     }
 
 
@@ -109,6 +115,9 @@ async def verify(
     identity: RequestIdentity = Depends(csrf_guard),
 ):
     rows = await request.app.state.providers.verify(session, provider_id, identity.audit_context)
+    recommendations = await request.app.state.model_recommendations.apply_recommended(
+        session, provider_id, identity.account.id, identity.audit_context
+    )
     return {
         "verified": True,
         "models": [
@@ -120,8 +129,33 @@ async def verify(
             }
             for r in rows
         ],
-        "recommendations": None,
+        "recommendations": recommendations,
     }
+
+
+@router.post("/{provider_id}/key/reveal")
+async def reveal_key(
+    provider_id: UUID,
+    request: Request,
+    session: AsyncSession = Depends(db_session),
+    identity: RequestIdentity = Depends(csrf_guard),
+):
+    key = await request.app.state.providers.reveal_key(session, provider_id, identity.audit_context)
+    response = JSONResponse({"api_key": key})
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
+    response.headers["Pragma"] = "no-cache"
+    return response
+
+
+@router.delete("/{provider_id}/key")
+async def revoke_key(
+    provider_id: UUID,
+    request: Request,
+    session: AsyncSession = Depends(db_session),
+    identity: RequestIdentity = Depends(csrf_guard),
+):
+    await request.app.state.providers.revoke_key(session, provider_id, identity.audit_context)
+    return {"revoked": True}
 
 
 @router.get("/{provider_id}/model-options")

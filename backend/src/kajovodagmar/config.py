@@ -25,6 +25,7 @@ class InfrastructureSettings(BaseSettings):
     trusted_proxy_cidrs: tuple[str, ...] = ()
     otlp_endpoint: str | None = None
     telemetry_service_name: str = "kajovodagmar"
+    voice_service_api_key_file: Path = Path("/run/secrets/voice-service-api-key")
 
     @field_validator("public_origin")
     @classmethod

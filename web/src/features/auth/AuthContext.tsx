@@ -12,7 +12,21 @@ import { api, setCsrfToken } from '../../api/client';
 import { endVoiceSession } from '../../audio/voiceSession';
 
 type Profile = { display_name: string; email: string | null; email_state: string };
-type User = { id: string; username: string; state: string; profile: Profile };
+export type ServiceAccessNotice = {
+  id: string;
+  occurred_at: string;
+  result: string;
+  endpoint: string;
+  network_context: string | null;
+  correlation_id: string | null;
+};
+type User = {
+  id: string;
+  username: string;
+  state: string;
+  profile: Profile;
+  service_access_notice?: ServiceAccessNotice | null;
+};
 type InstanceState = 'loading' | 'uninitialized' | 'active';
 
 type AuthContextValue = {

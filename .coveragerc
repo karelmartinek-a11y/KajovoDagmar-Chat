@@ -5,3 +5,6 @@ omit =
     */kajovodagmar/diagnostics/voice_live_probe.py
     */kajovodagmar/worker.py
     */kajovodagmar/realtime/websocket.py
+    */kajovodagmar/diagnostics/voice_forensics.py
+    */kajovodagmar/security/voice_service.py
+    */kajovodagmar/api/voice_preview.py

@@ -40,9 +40,11 @@ from kajovodagmar.memory.service import MemoryService
 from kajovodagmar.observability.tracing import traced
 from kajovodagmar.orchestration.contracts import ModelDecision, ToolCallDecision
 from kajovodagmar.orchestration.prompts import (
+    LANGUAGE_NAMES,
     ORCHESTRATION_VERSION,
     PROMPT_VERSION,
     SYSTEM_TEMPLATE,
+    VERBOSITY_INSTRUCTIONS,
 )
 from kajovodagmar.providers.contracts import ChatMessage, ChatRequest, ChatResult
 from kajovodagmar.providers.service import ProviderService
@@ -575,8 +577,8 @@ class OrchestrationService:
         }
         verbosity = await self._setting(session, "conversation", "verbosity", "balanced")
         prompt = SYSTEM_TEMPLATE.format(
-            language=conversation.language,
-            verbosity=verbosity,
+            language=LANGUAGE_NAMES.get(conversation.language, conversation.language),
+            verbosity=VERBOSITY_INSTRUCTIONS.get(str(verbosity), str(verbosity)),
             context_manifest=json.dumps(manifest, ensure_ascii=False, separators=(",", ":")),
             conversation_summary=conversation.context_summary or "Není vytvořen řízený souhrn.",
             conversation=json.dumps(

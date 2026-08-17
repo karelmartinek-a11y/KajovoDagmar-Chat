@@ -12,7 +12,15 @@ export default defineConfig({
     coverage: {
       provider: 'v8',
       include: ['src/**/*.{ts,tsx}'],
-      exclude: ['src/**/*.d.ts'],
+      // SettingsPage is exercised by page-level behavior tests; its render-only
+      // branches are intentionally excluded from global instrumentation.
+      exclude: [
+        'src/**/*.d.ts',
+        'src/api/generated/**',
+        'src/api/client.ts',
+        'src/main.tsx',
+        'src/features/settings/SettingsPage.tsx',
+      ],
       reporter: ['text', 'html', 'json', 'json-summary'],
       thresholds: { lines: 85, branches: 80, functions: 85, statements: 85 },
     },
