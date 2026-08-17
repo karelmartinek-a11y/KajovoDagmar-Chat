@@ -17,7 +17,10 @@ def upgrade() -> None:
     bind = op.get_bind()
     Base.metadata.create_all(
         bind=bind,
-        tables=[models.VoiceServiceApiKey.__table__, models.ServiceAccessNotice.__table__],
+        tables=[
+            models.VoiceServiceApiKey.__table__,
+            models.ServiceAccessNotice.__table__,
+        ],
     )
 
 

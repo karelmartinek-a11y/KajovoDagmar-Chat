@@ -35,12 +35,7 @@ def _pcm_frame(frame_number: int, voiced: bool) -> bytes:
     samples = []
     for index in range(FRAME_SAMPLES):
         value = (
-            int(
-                8500
-                * math.sin(
-                    2 * math.pi * 440 * (frame_number * FRAME_SAMPLES + index) / 24000
-                )
-            )
+            int(8500 * math.sin(2 * math.pi * 440 * (frame_number * FRAME_SAMPLES + index) / 24000))
             if voiced
             else 0
         )
@@ -52,10 +47,7 @@ def _pcm_frame(frame_number: int, voiced: bool) -> bytes:
 async def run() -> dict[str, Any]:
     started = time.perf_counter()
     base_url = os.environ.get("VOICE_FORENSICS_BASE_URL", "http://127.0.0.1:8000").rstrip("/")
-    ws_url = (
-        base_url.replace("https://", "wss://").replace("http://", "ws://")
-        + "/api/v1/realtime"
-    )
+    ws_url = base_url.replace("https://", "wss://").replace("http://", "ws://") + "/api/v1/realtime"
     key_file = Path(
         os.environ.get(
             "KAJOVODAGMAR_VOICE_SERVICE_API_KEY_FILE",
