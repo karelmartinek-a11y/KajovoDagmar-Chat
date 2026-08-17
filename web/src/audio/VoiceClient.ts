@@ -107,6 +107,7 @@ export class VoiceClient {
   private generation = 1;
   private reconnectAttempts = 0;
   private reconnectTimer: number | null = null;
+  private responseRecoveryTimer: number | null = null;
   private ending = false;
   private lifecycleBound = false;
   private wakeLock: WakeLockSentinel | null = null;
@@ -128,6 +129,24 @@ export class VoiceClient {
   private update(patch: Partial<VoiceSnapshot>): void {
     this.snapshot = { ...this.snapshot, ...patch };
     this.listeners.forEach((listener) => listener(this.snapshot));
+  }
+
+  private clearResponseRecoveryTimer(): void {
+    if (this.responseRecoveryTimer !== null) {
+      window.clearTimeout(this.responseRecoveryTimer);
+      this.responseRecoveryTimer = null;
+    }
+  }
+
+  private armResponseRecovery(): void {
+    this.clearResponseRecoveryTimer();
+    this.responseRecoveryTimer = window.setTimeout(() => {
+      this.responseRecoveryTimer = null;
+      if (this.snapshot.state === 'responding') {
+        this.move('listening', 'Naslouchám');
+        this.update({ turnState: 'listening', audioRetryAvailable: true });
+      }
+    }, 20_000);
   }
 
   private setMicrophoneState(patch: Partial<VoiceSnapshot> = {}): void {
@@ -561,6 +580,7 @@ export class VoiceClient {
 
   interrupt(): void {
     this.stopPlayback();
+    this.clearResponseRecoveryTimer();
     this.send('assistant.interrupt', {});
     this.move('listening', 'Naslouchám');
   }
@@ -766,13 +786,16 @@ export class VoiceClient {
         });
         this.move('responding', 'Odpovídám');
         this.update({ turnState: 'speaking' });
+        this.armResponseRecovery();
         break;
       }
       case 'assistant.audio.end':
+        this.clearResponseRecoveryTimer();
         this.move('listening', 'Naslouchám');
         this.setMicrophoneState({ turnState: 'listening' });
         break;
       case 'assistant.audio.error':
+        this.clearResponseRecoveryTimer();
         this.update({
           error: 'Textová odpověď je hotová, ale hlas se nepodařilo vytvořit.',
           audioRetryAvailable: true,
@@ -780,6 +803,7 @@ export class VoiceClient {
         this.move('listening', 'Naslouchám');
         break;
       case 'assistant.interrupted':
+        this.clearResponseRecoveryTimer();
         this.move('listening', 'Naslouchám');
         break;
       case 'flow_control':
