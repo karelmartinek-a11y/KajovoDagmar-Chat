@@ -81,6 +81,11 @@ async def run_probe() -> dict[str, Any]:  # pragma: no cover - exercised as a co
                     },
                     temperature=0.0,
                     timeout_seconds=30.0,
+                    # The catalog is authoritative for model-specific
+                    # parameters. In particular, GPT-5 models reject
+                    # ``temperature``; the provider omits it when the
+                    # selected model does not advertise that capability.
+                    capabilities=getattr(model, "capabilities", None),
                 )
             )
             if not chat.text or not isinstance(chat.structured, dict):
