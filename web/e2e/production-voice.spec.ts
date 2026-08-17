@@ -44,7 +44,7 @@ test.describe('Production voice smoke test', () => {
     });
     await expect(assistantMessages.nth(assistantCount)).toBeVisible({ timeout: 60_000 });
     await expect(page.getByText('Naslouchám', { exact: true })).toBeVisible({ timeout: 60_000 });
-    await expect(page.getByRole('alert')).toHaveCount(0);
+    expect(await page.getByRole('alert').allTextContents()).toEqual([]);
 
     await page.getByRole('button', { name: 'Ukončit rozhovor' }).click();
     await expect(page.getByText('Rozhovor byl ukončen', { exact: true })).toBeVisible({
