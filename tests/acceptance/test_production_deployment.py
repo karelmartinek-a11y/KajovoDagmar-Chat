@@ -88,7 +88,7 @@ def test_production_voice_forensics_uses_the_supported_cli_and_redacts_key_mater
     implementation = (
         ROOT / "backend" / "src" / "kajovodagmar" / "diagnostics" / "voice_forensics.py"
     ).read_text()
-    assert 'kajovodagmar voice-forensics >"$report"' in wrapper
+    assert 'exec -T --user root web kajovodagmar voice-forensics >"$report"' in wrapper
     assert "voice-forensics --json" not in wrapper
     assert '"key_prefix"' not in implementation
 
