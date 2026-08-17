@@ -23,7 +23,7 @@ docker compose --project-name kajovodagmar-chat \
   --env-file "$ENV_FILE" \
   --file "$CURRENT/deployment/compose.yaml" \
   --file "$CURRENT/deployment/production/compose.yaml" \
-  exec -T web kajovodagmar voice-forensics >"$report"
+  exec -T --user root web kajovodagmar voice-forensics >"$report"
 
 chmod 600 "$report"
 echo "voice-forensics=pass report=$report"
