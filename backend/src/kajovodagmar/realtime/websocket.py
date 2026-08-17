@@ -408,12 +408,6 @@ async def receive_audio(
     websocket: WebSocket, app: Any, state: ConnectionState, data: bytes
 ) -> None:
     if state.paused or state.conversation_id is None:
-        await emit(
-            websocket,
-            state,
-            "error",
-            {"code": "audio_not_accepted", "message": "Mikrofon není v aktivním stavu."},
-        )
         return
     try:
         frame_sequence, captured_ms, pcm = decode_audio_packet(data)

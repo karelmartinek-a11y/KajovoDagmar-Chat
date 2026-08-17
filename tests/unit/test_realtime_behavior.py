@@ -74,6 +74,7 @@ async def test_emit_audio_validation_and_size_limits(
         cast(Any, websocket), SimpleNamespace(), state, audio_packet(1, 1)
     )
     assert state.audio == b""
+    assert websocket.send_text.await_count == 1
     state.paused = False
     await realtime.receive_audio(cast(Any, websocket), SimpleNamespace(), state, b"bad")
     assert state.audio == b""
