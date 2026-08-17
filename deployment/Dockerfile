@@ -19,7 +19,7 @@ ENV PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1 \
     PATH=/opt/kajovodagmar/.venv/bin:/opt/kajovodagmar/bin:$PATH
 RUN addgroup -S -g 10001 kajovodagmar \
     && adduser -S -D -H -u 10001 -G kajovodagmar -s /sbin/nologin kajovodagmar \
-    && apk add --no-cache ca-certificates libpq
+    && apk add --no-cache ca-certificates
 WORKDIR /opt/kajovodagmar
 COPY --from=python-build /opt/kajovodagmar/.venv .venv
 COPY migrations/ migrations/
