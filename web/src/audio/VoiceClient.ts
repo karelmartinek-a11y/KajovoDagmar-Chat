@@ -114,6 +114,7 @@ export class VoiceClient {
   private language = 'cs';
   private listeners = new Set<Listener>();
   private playbackQueue: AudioBuffer[] = [];
+  private messageChain: Promise<void> = Promise.resolve();
   private lastAssistantText: string | null = null;
   private playingSource: AudioBufferSourceNode | null = null;
   private snapshot: VoiceSnapshot = { ...emptyVoiceSnapshot };
@@ -390,7 +391,14 @@ export class VoiceClient {
     const socket = new WebSocket(url, 'kajovodagmar.realtime.v1');
     this.socket = socket;
     socket.binaryType = 'arraybuffer';
-    socket.onmessage = (event) => void this.onMessage(event);
+    socket.onmessage = (event) => {
+      // Preserve the server event order across text envelopes and binary PCM
+      // frames. Concurrent handlers can otherwise process audio.end before
+      // preceding websocket work has updated the snapshot.
+      this.messageChain = this.messageChain
+        .then(() => this.onMessage(event))
+        .catch(() => this.fail('Realtime zprávu se nepodařilo zpracovat.'));
+    };
     socket.onclose = () => {
       if (this.socket !== socket || this.ending) return;
       this.stopPlayback();
@@ -769,7 +777,7 @@ export class VoiceClient {
           error: 'Textová odpověď je hotová, ale hlas se nepodařilo vytvořit.',
           audioRetryAvailable: true,
         });
-        this.move('listening', 'Textová odpověď je hotová');
+        this.move('listening', 'Naslouchám');
         break;
       case 'assistant.interrupted':
         this.move('listening', 'Naslouchám');
