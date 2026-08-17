@@ -35,6 +35,7 @@ class SMTPMailer:
         message["Subject"] = subject
         message.set_content(text)
         context = ssl.create_default_context()
+        smtp: smtplib.SMTP | smtplib.SMTP_SSL
         if self.config.use_implicit_tls:
             smtp = smtplib.SMTP_SSL(self.config.host, self.config.port, timeout=20, context=context)
         else:
