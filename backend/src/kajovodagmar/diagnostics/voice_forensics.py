@@ -134,7 +134,10 @@ async def _receive_until(
 ) -> None:
     deadline = time.monotonic() + 90
     while time.monotonic() < deadline:
-        message = await asyncio.wait_for(socket.recv(), timeout=15)
+        try:
+            message = await asyncio.wait_for(socket.recv(), timeout=15)
+        except TimeoutError:
+            continue
         if isinstance(message, bytes):
             if audio_parts is not None:
                 audio_parts.append(message)
